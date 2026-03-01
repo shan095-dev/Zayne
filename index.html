@@ -22803,10 +22803,109 @@ window.addEventListener('load', function() {
 </div>
 
 <script>
-// 批量删除表情包功能
+// ==================== 滑动批量删除表情功能（整合版） ====================
 let isBatchDeleteMode = false;
 let selectedStickers = new Set();
+let touchStartStickerIndex = null;
+let touchCurrentStickerIndex = null;
+let isTouchSelecting = false;
 
+// ========== 样式添加 ==========
+function addBatchDeleteStyles() {
+    const styleId = 'batch-delete-styles';
+    if (document.getElementById(styleId)) return;
+    
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = `
+        /* 复选框样式 */
+        .batch-delete-checkbox {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: rgba(0,0,0,0.5);
+            border: 2px solid white;
+            cursor: pointer;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            pointer-events: auto;
+            padding: 10px;
+            box-sizing: content-box;
+        }
+        
+        .batch-delete-checkbox:active {
+            transform: scale(0.9) !important;
+        }
+        
+        /* 工具栏动画 */
+        #batch-delete-toolbar {
+            animation: slideDown 0.3s ease;
+        }
+        
+        @keyframes slideDown {
+            from {
+                transform: translateY(-100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
+        /* 选中高亮效果 */
+        .sticker-item.selected-for-delete {
+            border-color: #ffc107 !important;
+            box-shadow: 0 0 0 2px #ffc107 !important;
+        }
+        
+        .sticker-item.swipe-highlight {
+            border-color: #ffc107 !important;
+            box-shadow: 0 0 0 3px rgba(255, 193, 7, 0.5), 0 4px 12px rgba(0,0,0,0.15) !important;
+            transform: scale(1.02);
+            transition: all 0.2s ease;
+            z-index: 10;
+            position: relative;
+        }
+        
+        /* 脉冲动画 */
+        @keyframes pulseOnce {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); box-shadow: 0 0 0 3px rgba(255, 193, 7, 0.5); }
+            100% { transform: scale(1); }
+        }
+        
+        /* 优化触摸体验 */
+        .sticker-item {
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+            touch-action: pan-y pinch-zoom;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        
+        .sticker-item:active {
+            transform: scale(0.98);
+            transition: transform 0.1s;
+        }
+        
+        /* 删除动画 */
+        .sticker-item.deleting {
+            opacity: 0;
+            transform: scale(0.8) rotate(-2deg);
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+// ========== 工具栏管理 ==========
 function toggleBatchDeleteMode() {
     isBatchDeleteMode = !isBatchDeleteMode;
     selectedStickers.clear();
@@ -22815,22 +22914,70 @@ function toggleBatchDeleteMode() {
     if (!listArea) return;
     
     if (isBatchDeleteMode) {
-        // 添加批量删除工具栏
+        addBatchDeleteStyles();
         addBatchDeleteToolbar();
-        // 为所有表情添加复选框
         addCheckboxesToStickers();
-        showNotification('批量删除模式已开启，点击表情选择，再次点击取消选择', 'info');
+        showNotification('批量删除模式已开启\n👉 点击选择单个表情\n👉 滑动手指可连续选择多个', 'info', 4000);
+        
+        // 显示操作提示
+        setTimeout(() => {
+            const hint = document.createElement('div');
+            hint.id = 'swipe-hint';
+            hint.style.cssText = `
+                position: fixed;
+                bottom: 100px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: rgba(0,0,0,0.8);
+                color: white;
+                padding: 12px 24px;
+                border-radius: 30px;
+                font-size: 14px;
+                z-index: 10001;
+                backdrop-filter: blur(4px);
+                animation: fadeInUp 0.3s ease;
+                pointer-events: none;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+                text-align: center;
+                line-height: 1.5;
+            `;
+            hint.innerHTML = '👆 点击选择单个表情<br>👉 滑动手指可连续选择多个';
+            document.body.appendChild(hint);
+            
+            setTimeout(() => {
+                if (hint.parentNode) hint.remove();
+            }, 3500);
+        }, 200);
+        
+        // 初始化滑动选择
+        setTimeout(() => {
+            initSwipeDeleteSelection();
+        }, 200);
     } else {
-        // 移除批量删除工具栏
         removeBatchDeleteToolbar();
-        // 移除所有复选框
         removeCheckboxesFromStickers();
         selectedStickers.clear();
+        
+        // 移除滑动监听
+        const listArea = document.getElementById('custom-replies-list');
+        if (listArea) {
+            listArea.removeEventListener('touchstart', handleStickerTouchStart);
+            listArea.removeEventListener('touchmove', handleStickerTouchMove);
+            listArea.removeEventListener('touchend', handleStickerTouchEnd);
+        }
+        
+        // 移除高亮
+        document.querySelectorAll('.sticker-item').forEach(sticker => {
+            sticker.classList.remove('swipe-highlight', 'selected-for-delete');
+        });
+        
+        // 移除提示
+        const hint = document.getElementById('swipe-hint');
+        if (hint) hint.remove();
     }
 }
 
 function addBatchDeleteToolbar() {
-    // 移除已有的工具栏
     removeBatchDeleteToolbar();
     
     const modalMainView = document.querySelector('.modal-main-view');
@@ -22854,19 +23001,30 @@ function addBatchDeleteToolbar() {
         backdrop-filter: blur(10px);
         margin-bottom: 10px;
         border-radius: 0 0 16px 16px;
+        flex-wrap: wrap;
+        gap: 10px;
     `;
     
     toolbar.innerHTML = `
-        <div style="display: flex; align-items: center; gap: 12px;">
-            <span id="batch-delete-count" style="font-weight: 600; font-size: 14px;">已选择 0 个</span>
-            <button onclick="selectAllStickers()" style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600;">全选</button>
-            <button onclick="deselectAllStickers()" style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600;">取消全选</button>
+        <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+            <span id="batch-delete-count" style="font-weight: 600; font-size: 14px; background: rgba(255,255,255,0.15); padding: 4px 12px; border-radius: 20px;">已选择 0 个</span>
+            <div style="display: flex; gap: 8px;">
+                <button onclick="selectAllStickers()" style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 4px;">
+                    <i class="fas fa-check-double"></i> 全选
+                </button>
+                <button onclick="deselectAllStickers()" style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 4px;">
+                    <i class="fas fa-times"></i> 取消全选
+                </button>
+            </div>
         </div>
-        <div style="display: flex; align-items: center; gap: 10px;">
-            <button onclick="confirmBatchDelete()" style="background: #ff4757; border: none; color: white; padding: 8px 20px; border-radius: 12px; cursor: pointer; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;">
-                <i class="fas fa-trash-alt"></i> 删除所选 (<span id="batch-delete-count-btn">0</span>)
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <button onclick="selectAllStickersAndDelete()" style="background: #ff4757; border: none; color: white; padding: 8px 20px; border-radius: 12px; cursor: pointer; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                <i class="fas fa-trash-alt"></i> 全部删除
             </button>
-            <button onclick="toggleBatchDeleteMode()" style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); color: white; padding: 8px 16px; border-radius: 12px; cursor: pointer; font-size: 13px;">
+            <button onclick="confirmBatchDelete()" style="background: #ffa502; border: none; color: white; padding: 8px 20px; border-radius: 12px; cursor: pointer; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                <i class="fas fa-check"></i> 删除所选 (<span id="batch-delete-count-btn">0</span>)
+            </button>
+            <button onclick="toggleBatchDeleteMode()" style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); color: white; padding: 8px 16px; border-radius: 12px; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 4px;">
                 <i class="fas fa-times"></i> 取消
             </button>
         </div>
@@ -22880,49 +23038,32 @@ function removeBatchDeleteToolbar() {
     if (existingToolbar) existingToolbar.remove();
 }
 
+// ========== 复选框管理 ==========
 function addCheckboxesToStickers() {
     const listArea = document.getElementById('custom-replies-list');
     if (!listArea) return;
     
-    // 获取所有表情项
     const stickers = listArea.querySelectorAll('.sticker-item');
     
     stickers.forEach((sticker, index) => {
-        // 为每个表情添加一个唯一标识
         if (!sticker.dataset.stickerIndex) {
             sticker.dataset.stickerIndex = index;
         }
         
-        // 添加复选框
+        // 移除已有的复选框
+        const oldCheckbox = sticker.querySelector('.batch-delete-checkbox');
+        if (oldCheckbox) oldCheckbox.remove();
+        
         const checkbox = document.createElement('div');
         checkbox.className = 'batch-delete-checkbox';
         checkbox.dataset.stickerIndex = index;
-        checkbox.style.cssText = `
-            position: absolute;
-            top: 8px;
-            left: 8px;
-            width: 24px;
-            height: 24px;
-            border-radius: 50%;
-            background: rgba(0,0,0,0.5);
-            border: 2px solid white;
-            cursor: pointer;
-            z-index: 10;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s ease;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-        `;
         
-        // 设置点击事件
         checkbox.onclick = (e) => {
             e.stopPropagation();
             toggleStickerSelection(index, checkbox);
         };
         
-        // 修改表情本身的点击事件
-        const originalClick = sticker.onclick;
+        // 修改表情点击事件
         sticker.onclick = (e) => {
             if (e.target.closest('.batch-delete-checkbox')) return;
             toggleStickerSelection(index, checkbox);
@@ -22941,7 +23082,6 @@ function removeCheckboxesFromStickers() {
     const checkboxes = listArea.querySelectorAll('.batch-delete-checkbox');
     checkboxes.forEach(cb => cb.remove());
     
-    // 恢复原始样式
     const stickers = listArea.querySelectorAll('.sticker-item');
     stickers.forEach(sticker => {
         sticker.style.position = '';
@@ -22949,18 +23089,26 @@ function removeCheckboxesFromStickers() {
     });
 }
 
+// ========== 选择管理 ==========
 function toggleStickerSelection(index, checkbox) {
     if (selectedStickers.has(index)) {
         selectedStickers.delete(index);
         checkbox.style.background = 'rgba(0,0,0,0.5)';
         checkbox.innerHTML = '';
+        checkbox.style.transform = 'scale(1)';
     } else {
         selectedStickers.add(index);
         checkbox.style.background = '#ffc107';
         checkbox.innerHTML = '✓';
         checkbox.style.color = 'white';
-        checkbox.style.fontSize = '14px';
+        checkbox.style.fontSize = '16px';
         checkbox.style.fontWeight = 'bold';
+        
+        // 添加点击动画
+        checkbox.style.transform = 'scale(1.2)';
+        setTimeout(() => {
+            checkbox.style.transform = 'scale(1)';
+        }, 150);
     }
     
     updateBatchDeleteCount();
@@ -22971,16 +23119,29 @@ function selectAllStickers() {
     if (!listArea) return;
     
     const stickers = listArea.querySelectorAll('.sticker-item');
+    
+    selectedStickers.clear();
+    
     stickers.forEach((sticker, index) => {
         selectedStickers.add(index);
         const checkbox = sticker.querySelector('.batch-delete-checkbox');
         if (checkbox) {
             checkbox.style.background = '#ffc107';
             checkbox.innerHTML = '✓';
+            checkbox.style.transform = 'scale(1.2)';
+            setTimeout(() => {
+                checkbox.style.transform = 'scale(1)';
+            }, 150);
         }
+        
+        sticker.style.animation = 'pulseOnce 0.3s ease';
+        setTimeout(() => {
+            sticker.style.animation = '';
+        }, 300);
     });
     
     updateBatchDeleteCount();
+    showNotification(`已选择全部 ${stickers.length} 个表情`, 'success', 1500);
 }
 
 function deselectAllStickers() {
@@ -22993,6 +23154,7 @@ function deselectAllStickers() {
     checkboxes.forEach(checkbox => {
         checkbox.style.background = 'rgba(0,0,0,0.5)';
         checkbox.innerHTML = '';
+        checkbox.style.transform = 'scale(1)';
     });
     
     updateBatchDeleteCount();
@@ -23007,6 +23169,118 @@ function updateBatchDeleteCount() {
     if (countBtnSpan) countBtnSpan.textContent = count;
 }
 
+// ========== 滑动选择功能 ==========
+function initSwipeDeleteSelection() {
+    const listArea = document.getElementById('custom-replies-list');
+    if (!listArea) return;
+    
+    listArea.removeEventListener('touchstart', handleStickerTouchStart);
+    listArea.removeEventListener('touchmove', handleStickerTouchMove);
+    listArea.removeEventListener('touchend', handleStickerTouchEnd);
+    listArea.removeEventListener('touchcancel', handleStickerTouchEnd);
+    
+    listArea.addEventListener('touchstart', handleStickerTouchStart, { passive: false });
+    listArea.addEventListener('touchmove', handleStickerTouchMove, { passive: false });
+    listArea.addEventListener('touchend', handleStickerTouchEnd);
+    listArea.addEventListener('touchcancel', handleStickerTouchEnd);
+}
+
+function handleStickerTouchStart(e) {
+    if (!isBatchDeleteMode) return;
+    
+    const sticker = e.target.closest('.sticker-item');
+    if (!sticker) return;
+    
+    e.preventDefault();
+    
+    const index = parseInt(sticker.dataset.stickerIndex);
+    if (isNaN(index)) return;
+    
+    touchStartStickerIndex = index;
+    touchCurrentStickerIndex = index;
+    isTouchSelecting = true;
+    
+    if (navigator.vibrate) navigator.vibrate(10);
+    
+    highlightStickerForSwipe(index);
+}
+
+function handleStickerTouchMove(e) {
+    if (!isTouchSelecting || !isBatchDeleteMode) return;
+    e.preventDefault();
+    
+    const touch = e.touches[0];
+    const elementsAtTouch = document.elementsFromPoint(touch.clientX, touch.clientY);
+    
+    for (let el of elementsAtTouch) {
+        if (el.classList && el.classList.contains('sticker-item')) {
+            const index = parseInt(el.dataset.stickerIndex);
+            if (!isNaN(index) && index !== touchCurrentStickerIndex) {
+                touchCurrentStickerIndex = index;
+                selectStickersInRange(touchStartStickerIndex, touchCurrentStickerIndex);
+                if (navigator.vibrate) navigator.vibrate(5);
+            }
+            break;
+        }
+    }
+}
+
+function handleStickerTouchEnd() {
+    if (!isTouchSelecting || !isBatchDeleteMode) return;
+    
+    isTouchSelecting = false;
+    touchStartStickerIndex = null;
+    touchCurrentStickerIndex = null;
+    
+    document.querySelectorAll('.sticker-item').forEach(sticker => {
+        sticker.classList.remove('swipe-highlight');
+    });
+}
+
+function selectStickersInRange(start, end) {
+    if (start === null || end === null) return;
+    
+    const min = Math.min(start, end);
+    const max = Math.max(start, end);
+    
+    const listArea = document.getElementById('custom-replies-list');
+    const stickers = listArea.querySelectorAll('.sticker-item');
+    
+    // 清除之前的选择（如果不需要连续累加，可以取消注释下行）
+    // selectedStickers.clear();
+    
+    for (let i = min; i <= max; i++) {
+        const sticker = stickers[i];
+        if (!sticker) continue;
+        
+        const index = i;
+        const checkbox = sticker.querySelector('.batch-delete-checkbox');
+        
+        if (checkbox && !selectedStickers.has(index)) {
+            selectedStickers.add(index);
+            checkbox.style.background = '#ffc107';
+            checkbox.innerHTML = '✓';
+            sticker.classList.add('swipe-highlight');
+        }
+    }
+    
+    updateBatchDeleteCount();
+}
+
+function highlightStickerForSwipe(index) {
+    const listArea = document.getElementById('custom-replies-list');
+    const stickers = listArea.querySelectorAll('.sticker-item');
+    
+    stickers.forEach((sticker, i) => {
+        if (i === index) {
+            sticker.classList.add('swipe-highlight');
+        } else {
+            sticker.classList.remove('swipe-highlight');
+        }
+    });
+}
+
+// ========== 删除功能 ==========
 function confirmBatchDelete() {
     if (selectedStickers.size === 0) {
         showNotification('请先选择要删除的表情', 'warning');
@@ -23015,30 +23289,76 @@ function confirmBatchDelete() {
     
     if (!confirm(`确定要删除选中的 ${selectedStickers.size} 个表情吗？此操作不可恢复！`)) return;
     
-    // 获取当前要删除的表情索引（从大到小排序，避免索引变化问题）
-    const indicesToDelete = Array.from(selectedStickers).sort((a, b) => b - a);
-    
-    // 从 stickerLibrary 中删除
-    indicesToDelete.forEach(index => {
-        stickerLibrary.splice(index, 1);
+    // 收集要删除的表情进行动画
+    const stickersToDelete = [];
+    selectedStickers.forEach(index => {
+        const sticker = document.querySelector(`.sticker-item[data-sticker-index="${index}"]`);
+        if (sticker) stickersToDelete.push(sticker);
     });
     
-    // 保存数据
-    throttledSaveData();
+    // 播放动画
+    stickersToDelete.forEach((sticker, i) => {
+        setTimeout(() => {
+            sticker.style.transition = 'all 0.2s ease';
+            sticker.style.opacity = '0';
+            sticker.style.transform = 'scale(0.8) rotate(-2deg)';
+        }, i * 30);
+    });
     
-    // 退出批量模式并重新渲染
-    toggleBatchDeleteMode();
-    renderReplyLibrary();
-    
-    showNotification(`✨ 成功删除 ${selectedStickers.size} 个表情`, 'success');
+    // 延迟删除
+    setTimeout(() => {
+        const indicesToDelete = Array.from(selectedStickers).sort((a, b) => b - a);
+        
+        indicesToDelete.forEach(index => {
+            stickerLibrary.splice(index, 1);
+        });
+        
+        throttledSaveData();
+        
+        toggleBatchDeleteMode();
+        renderReplyLibrary();
+        
+        showNotification(`✨ 成功删除 ${selectedStickers.size} 个表情`, 'success');
+    }, 300);
 }
 
+function selectAllStickersAndDelete() {
+    const listArea = document.getElementById('custom-replies-list');
+    if (!listArea) return;
+    
+    const stickers = listArea.querySelectorAll('.sticker-item');
+    if (stickers.length === 0) {
+        showNotification('没有可删除的表情', 'warning');
+        return;
+    }
+    
+    if (confirm(`确定要删除全部 ${stickers.length} 个表情吗？此操作不可恢复！`)) {
+        selectAllStickers();
+        
+        stickers.forEach((sticker, i) => {
+            setTimeout(() => {
+                sticker.style.transition = 'all 0.2s ease';
+                sticker.style.opacity = '0';
+                sticker.style.transform = 'scale(0.8) rotate(-2deg)';
+            }, i * 20);
+        });
+        
+        setTimeout(() => {
+            stickerLibrary = [];
+            throttledSaveData();
+            toggleBatchDeleteMode();
+            renderReplyLibrary();
+            showNotification(`✨ 已删除全部 ${stickers.length} 个表情`, 'success');
+        }, 300);
+    }
+}
+
+// ========== 初始化 ==========
 // 在回复库工具栏添加批量删除按钮
 function addBatchDeleteButtonToToolbar() {
     const toolbar = document.getElementById('cr-toolbar');
     if (!toolbar) return;
     
-    // 检查是否已存在
     if (document.getElementById('batch-delete-stickers-btn')) return;
     
     const batchDeleteBtn = document.createElement('button');
@@ -23059,26 +23379,24 @@ function addBatchDeleteButtonToToolbar() {
     toolbar.appendChild(batchDeleteBtn);
 }
 
-// 监听标签页切换，显示/隐藏批量删除按钮
+// 重写 renderReplyLibrary 以添加按钮
 const originalRenderReplyLibrary = renderReplyLibrary;
 renderReplyLibrary = function() {
     originalRenderReplyLibrary();
     
-    // 退出批量删除模式
     if (isBatchDeleteMode) {
         toggleBatchDeleteMode();
     }
     
-    // 添加批量删除按钮
     setTimeout(() => {
         addBatchDeleteButtonToToolbar();
     }, 100);
 };
 
-// 初始化
+// 启动初始化
 document.addEventListener('DOMContentLoaded', () => {
-    // 等待原始函数加载完成后覆盖
     setTimeout(() => {
+        addBatchDeleteStyles();
         if (typeof renderReplyLibrary === 'function') {
             const original = renderReplyLibrary;
             renderReplyLibrary = function() {
@@ -23091,7 +23409,431 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }, 1000);
 });
+</script>
+<!-- ==================== 通过文件批量导入表情包URL（支持TXT和DOCX） ==================== -->
+<script>
+// ==================== 通过文件批量导入表情包URL（支持TXT和DOCX） ====================
+// 引入docx解析库（通过CDN）
+function loadDocxLibrary() {
+    return new Promise((resolve, reject) => {
+        if (window.mammoth) {
+            resolve(window.mammoth);
+            return;
+        }
+        
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js';
+        script.onload = () => resolve(window.mammoth);
+        script.onerror = () => reject(new Error('加载DOCX解析库失败'));
+        document.head.appendChild(script);
+    });
+}
 
+function setupBatchImportFromFile() {
+    // 创建文件导入按钮
+    const addBatchFileImportBtn = () => {
+        const toolbar = document.getElementById('cr-toolbar');
+        if (!toolbar || document.getElementById('batch-import-file-btn')) return;
+        
+        const fileImportBtn = document.createElement('button');
+        fileImportBtn.className = 'reply-tool-btn';
+        fileImportBtn.id = 'batch-import-file-btn';
+        fileImportBtn.title = '从TXT/DOCX文件批量导入表情';
+        fileImportBtn.innerHTML = '<i class="fas fa-file-import"></i>';
+        fileImportBtn.style.color = '#6BCB77';
+        
+        fileImportBtn.onclick = () => {
+            if (currentSubTab === 'stickers') {
+                showFileImportDialog();
+            } else {
+                showNotification('请在表情库标签页使用文件导入', 'warning');
+            }
+        };
+        
+        toolbar.appendChild(fileImportBtn);
+    };
+    
+    // 创建文件导入对话框
+    const showFileImportDialog = () => {
+        const modal = document.createElement('div');
+        modal.style.cssText = `
+            position: fixed;
+            inset: 0;
+            z-index: 10001;
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        `;
+        
+        modal.innerHTML = `
+            <div style="
+                background: var(--secondary-bg);
+                border-radius: 24px;
+                width: 100%;
+                max-width: 500px;
+                padding: 24px 20px;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                animation: modalSlideUp 0.3s ease;
+            ">
+                <div style="
+                    font-size: 18px;
+                    font-weight: 600;
+                    color: var(--text-primary);
+                    margin-bottom: 16px;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                ">
+                    <i class="fas fa-file-import" style="color: var(--accent-color);"></i>
+                    从文件批量导入表情
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <div style="
+                        background: linear-gradient(135deg, rgba(var(--accent-color-rgb),0.08), rgba(var(--accent-color-rgb),0.02));
+                        border-radius: 16px;
+                        padding: 16px;
+                        margin-bottom: 16px;
+                    ">
+                        <div style="font-size: 13px; color: var(--text-primary); margin-bottom: 10px; font-weight: 600;">
+                            📋 支持的文件格式：
+                        </div>
+                        <ul style="font-size: 12px; color: var(--text-secondary); line-height: 1.8; margin: 0; padding-left: 20px;">
+                            <li><strong>TXT文件</strong> - 每行一个图片URL</li>
+                            <li><strong>DOCX文件</strong> - 自动提取所有图片链接</li>
+                            <li><strong>直接粘贴</strong> - 支持从Word/Excel复制多行内容</li>
+                        </ul>
+                    </div>
+                    
+                    <div style="margin-bottom: 16px;">
+                        <label style="font-size: 13px; font-weight: 600; color: var(--text-primary); display: block; margin-bottom: 8px;">
+                            📎 选择文件 (TXT/DOCX)
+                        </label>
+                        <input type="file" id="bulk-file-import" accept=".txt,.docx,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="
+                            width: 100%;
+                            padding: 12px;
+                            border: 1.5px dashed var(--border-color);
+                            border-radius: 12px;
+                            background: var(--primary-bg);
+                            color: var(--text-primary);
+                            font-size: 13px;
+                            cursor: pointer;
+                        ">
+                        <div id="file-parse-status" style="font-size: 12px; margin-top: 8px; color: var(--text-secondary); display: none;"></div>
+                    </div>
+                    
+                    <div style="margin: 16px 0; text-align: center; color: var(--text-secondary); font-size: 12px; position: relative;">
+                        <span style="background: var(--secondary-bg); padding: 0 10px; position: relative; z-index: 2;">或者</span>
+                        <div style="position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: var(--border-color); z-index: 1;"></div>
+                    </div>
+                    
+                    <div>
+                        <label style="font-size: 13px; font-weight: 600; color: var(--text-primary); display: block; margin-bottom: 8px;">
+                            📝 直接粘贴URL列表
+                        </label>
+                        <textarea id="bulk-urls-textarea" 
+                            placeholder="每行一个图片链接，例如：&#10;https://example.com/image1.jpg&#10;https://example.com/image2.png&#10;https://example.com/image3.gif"
+                            style="
+                                width: 100%;
+                                height: 150px;
+                                padding: 12px;
+                                border: 1.5px solid var(--border-color);
+                                border-radius: 16px;
+                                background: var(--primary-bg);
+                                color: var(--text-primary);
+                                font-size: 13px;
+                                line-height: 1.5;
+                                resize: vertical;
+                                outline: none;
+                                font-family: var(--font-family);
+                            "
+                        ></textarea>
+                    </div>
+                    
+                    <div style="
+                        margin-top: 16px;
+                        font-size: 12px;
+                        color: var(--text-secondary);
+                        padding: 10px 12px;
+                        background: rgba(var(--accent-color-rgb), 0.08);
+                        border-radius: 12px;
+                    ">
+                        <i class="fas fa-info-circle" style="color: var(--accent-color); margin-right: 6px;"></i>
+                        已存在的URL不会重复添加，单次最多支持200个URL
+                    </div>
+                </div>
+                
+                <div style="display: flex; gap: 10px;">
+                    <button id="cancel-file-import" style="
+                        flex: 1;
+                        padding: 14px;
+                        border: 1.5px solid var(--border-color);
+                        border-radius: 14px;
+                        background: transparent;
+                        color: var(--text-secondary);
+                        font-size: 15px;
+                        font-weight: 600;
+                        cursor: pointer;
+                        font-family: var(--font-family);
+                    ">取消</button>
+                    
+                    <button id="confirm-file-import" style="
+                        flex: 2;
+                        padding: 14px;
+                        border: none;
+                        border-radius: 14px;
+                        background: var(--accent-color);
+                        color: white;
+                        font-size: 15px;
+                        font-weight: 600;
+                        cursor: pointer;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        gap: 8px;
+                        font-family: var(--font-family);
+                        box-shadow: 0 4px 12px rgba(var(--accent-color-rgb), 0.3);
+                    ">
+                        <i class="fas fa-download"></i>
+                        开始导入
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        const statusDiv = modal.querySelector('#file-parse-status');
+        const fileInput = modal.querySelector('#bulk-file-import');
+        const textarea = modal.querySelector('#bulk-urls-textarea');
+        
+        // 点击遮罩关闭
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) modal.remove();
+        });
+        
+        // 取消按钮
+        modal.querySelector('#cancel-file-import').addEventListener('click', () => {
+            modal.remove();
+        });
+        
+        // 文件选择处理
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            statusDiv.style.display = 'block';
+            statusDiv.textContent = '⏳ 正在解析文件...';
+            statusDiv.style.color = 'var(--accent-color)';
+            
+            try {
+                let content = '';
+                
+                // 根据文件类型处理
+                if (file.name.toLowerCase().endsWith('.docx')) {
+                    // 处理DOCX文件
+                    try {
+                        const mammoth = await loadDocxLibrary();
+                        const arrayBuffer = await file.arrayBuffer();
+                        const result = await mammoth.extractRawText({ arrayBuffer });
+                        content = result.value;
+                        statusDiv.textContent = '✅ DOCX文件解析成功';
+                    } catch (docxErr) {
+                        console.error('DOCX解析失败:', docxErr);
+                        statusDiv.textContent = '❌ DOCX解析失败，尝试作为文本读取';
+                        // 降级处理：尝试作为文本读取
+                        content = await file.text();
+                    }
+                } else {
+                    // 处理TXT文件
+                    content = await file.text();
+                    statusDiv.textContent = '✅ TXT文件读取成功';
+                }
+                
+                // 提取URL
+                const urls = extractUrlsFromText(content);
+                
+                if (urls.length > 0) {
+                    // 如果已有内容，询问是否追加
+                    if (textarea.value.trim()) {
+                        if (confirm(`检测到 ${urls.length} 个图片链接，是否追加到现有列表？\n点击确定：追加\n点击取消：替换`)) {
+                            textarea.value += '\n' + urls.join('\n');
+                        } else {
+                            textarea.value = urls.join('\n');
+                        }
+                    } else {
+                        textarea.value = urls.join('\n');
+                    }
+                    statusDiv.innerHTML = `✅ 已提取 ${urls.length} 个链接，<span style="color: #ff4757;">请点击下方"开始导入"按钮完成导入</span>`;
+                    statusDiv.style.color = '#6BCB77';
+                } else {
+                    statusDiv.textContent = '⚠️ 未找到有效的图片链接';
+                    statusDiv.style.color = '#ffa502';
+                }
+            } catch (err) {
+                console.error('文件读取失败:', err);
+                statusDiv.textContent = '❌ 文件读取失败：' + err.message;
+                statusDiv.style.color = '#ff4757';
+            }
+        });
+        
+        // 确认导入
+        modal.querySelector('#confirm-file-import').addEventListener('click', async () => {
+            const urlsText = textarea.value.trim();
+            
+            if (!urlsText) {
+                showNotification('请输入URL列表或选择文件', 'warning');
+                return;
+            }
+            
+            // 解析URL
+            const urlList = urlsText.split(/[\n\r]+/)
+                .map(url => url.trim())
+                .filter(url => {
+                    return url && (
+                        url.startsWith('http://') || 
+                        url.startsWith('https://') || 
+                        url.startsWith('data:image')
+                    ) && url.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?.*)?$/i);
+                });
+            
+            if (urlList.length === 0) {
+                showNotification('未检测到有效的图片链接（需以http开头，且包含常见图片格式）', 'error');
+                return;
+            }
+            
+            if (urlList.length > 200) {
+                showNotification('URL数量超过200个，请分批导入', 'warning');
+                return;
+            }
+            
+            // 显示处理中状态
+            const confirmBtn = modal.querySelector('#confirm-file-import');
+            const originalText = confirmBtn.innerHTML;
+            confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 处理中...';
+            confirmBtn.disabled = true;
+            
+            // 获取当前表情库
+            const targetLibrary = stickerLibrary || [];
+            const oldLength = targetLibrary.length;
+            
+            // 去重合并
+            const newUrls = [...new Set([...targetLibrary, ...urlList])];
+            
+            // 更新stickerLibrary
+            stickerLibrary.length = 0;
+            stickerLibrary.push(...newUrls);
+            
+            // 保存
+            throttledSaveData();
+            
+            // 关闭弹窗
+            modal.remove();
+            
+            // 刷新显示
+            renderReplyLibrary();
+            
+            // 显示成功消息
+            const addedCount = newUrls.length - oldLength;
+            showNotification(`✨ 成功导入 ${addedCount} 个表情，总数 ${newUrls.length} 个`, 'success');
+        });
+    };
+    
+    // 修改原有renderReplyLibrary，添加按钮
+    const originalRender = renderReplyLibrary;
+    renderReplyLibrary = function() {
+        originalRender();
+        if (currentSubTab === 'stickers') {
+            setTimeout(() => {
+                addBatchFileImportBtn();
+            }, 100);
+        }
+    };
+    
+    // 初始化
+    addBatchFileImportBtn();
+}
+
+// 从文本中提取所有URL的函数
+function extractUrlsFromText(text) {
+    // 更宽松的URL匹配规则
+    const urlRegex = /(https?:\/\/[^\s<>"']+?\.(?:jpg|jpeg|png|gif|webp|bmp|svg)(?:\?[^\s<>"']*)?)/gi;
+    const matches = text.match(urlRegex) || [];
+    
+    // 去重
+    return [...new Set(matches)];
+}
+
+// 增强粘贴处理
+function enhancePasteHandler() {
+    document.addEventListener('paste', (e) => {
+        // 检查是否在文本框中粘贴，并且当前在表情库标签页
+        if (currentSubTab === 'stickers' && document.activeElement && 
+            (document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT')) {
+            
+            const pastedText = e.clipboardData.getData('text');
+            
+            // 如果是从DOCX复制的，可能包含很多换行和空格
+            if (pastedText.includes('\n') && pastedText.includes('http')) {
+                const urls = extractUrlsFromText(pastedText);
+                if (urls.length > 0) {
+                    // 询问用户是否要直接导入这些URL
+                    setTimeout(() => {
+                        if (confirm(`检测到 ${urls.length} 个图片链接，是否直接导入到表情库？`)) {
+                            // 直接导入
+                            const oldLength = stickerLibrary.length;
+                            stickerLibrary = [...new Set([...stickerLibrary, ...urls])];
+                            throttledSaveData();
+                            renderReplyLibrary();
+                            showNotification(`✨ 已导入 ${stickerLibrary.length - oldLength} 个表情`, 'success');
+                            
+                            // 清空粘贴内容（可选）
+                            if (document.activeElement.value.includes(pastedText)) {
+                                document.activeElement.value = '';
+                            }
+                        }
+                    }, 100);
+                }
+            }
+        }
+    });
+}
+
+// 添加一个辅助函数，用于从DOCX文件提取URL（备用方案）
+async function extractUrlsFromDocx(file) {
+    try {
+        // 方法1：使用FileReader读取为文本（简单内容可行）
+        const text = await file.text();
+        const urls = extractUrlsFromText(text);
+        if (urls.length > 0) return urls;
+    } catch (e) {
+        console.log('直接文本读取失败，尝试二进制解析');
+    }
+    
+    try {
+        // 方法2：使用ArrayBuffer解析
+        const arrayBuffer = await file.arrayBuffer();
+        const decoder = new TextDecoder('utf-8');
+        const text = decoder.decode(arrayBuffer);
+        const urls = extractUrlsFromText(text);
+        if (urls.length > 0) return urls;
+    } catch (e) {
+        console.log('二进制解析失败');
+    }
+    
+    return [];
+}
+
+// 启动功能
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        setupBatchImportFromFile();
+        enhancePasteHandler();
+    }, 1000);
+});
 </script>
 </body>
 </html>
