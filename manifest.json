@@ -2,7 +2,7 @@
     "name": "传讯",
     "short_name": "传讯",
     "description": "与梦的私密聊天空间",
-    "start_url": "/Zayne/",  // 关键修改：加上仓库名
+    "start_url": "/Zayne/",  
     "display": "standalone",
     "background_color": "#000000",
     "theme_color": "#c5a47e",
