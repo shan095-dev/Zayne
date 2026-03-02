@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh-CN" data-theme="light" data-color-theme="black-white">
 <head>
-    <link rel="manifest" href="/manifest.json">
+    <link rel="manifest" href="/Zayne/manifest.json">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="传讯">
@@ -26065,23 +26065,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
 })();
-     // 注册Service Worker
+    <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
+    navigator.serviceWorker.register('/Zayne/sw.js')  // 注意路径
       .then(registration => {
-        console.log('ServiceWorker注册成功:', registration.scope);
-        
-        // 请求通知权限
-        if ('Notification' in window && Notification.permission === 'default') {
-          Notification.requestPermission();
-        }
+        console.log('ServiceWorker注册成功');
       })
       .catch(err => {
         console.log('ServiceWorker注册失败:', err);
       });
   });
 }
+</script>
 
 // 发送推送通知的函数
 function sendPushNotification(title, body, url) {
