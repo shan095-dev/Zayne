@@ -25697,5 +25697,450 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(forceHideToolbar, 1000);
 })();
 </script>
+        <script>
+// ==================== 增强版后台消息通知（像QQ微信一样） ====================
+(function() {
+    // 检查浏览器支持
+    if (!('Notification' in window)) {
+        console.warn('浏览器不支持通知');
+        return;
+    }
+
+    // 配置常量
+    const NOTIF_CONFIG = {
+        CHECK_INTERVAL: 5000,        // 检查新消息间隔（5秒）
+        DEBOUNCE_TIME: 2000,          // 同一消息防抖时间
+        MAX_TITLE_LENGTH: 30,         // 标题最大长度
+        MAX_BODY_LENGTH: 80,           // 内容最大长度
+        SOUND_ENABLED: true,           // 是否播放提示音
+        VIBRATION_PATTERN: [200, 100, 200] // 振动模式
+    };
+
+    let lastMessageCount = 0;
+    let notificationCheckInterval = null;
+    let lastNotificationTime = 0;
+    let lastNotifiedMessageIds = new Set(); // 记录已通知的消息ID
+    let serviceWorkerRegistration = null;
+
+    // ========== 1. 初始化通知系统 ==========
+    async function initNotificationSystem() {
+        console.log('初始化通知系统...');
+        
+        // 尝试注册Service Worker（用于更可靠的后台通知）
+        try {
+            if ('serviceWorker' in navigator) {
+                const registration = await navigator.serviceWorker.register('/sw.js').catch(() => null);
+                if (registration) {
+                    serviceWorkerRegistration = registration;
+                    console.log('Service Worker 注册成功');
+                }
+            }
+        } catch (e) {
+            console.warn('Service Worker 注册失败:', e);
+        }
+
+        // 初始化消息计数
+        lastMessageCount = window.messages ? window.messages.length : 0;
+        
+        // 清理旧的通知记录
+        setInterval(() => {
+            if (lastNotifiedMessageIds.size > 100) {
+                lastNotifiedMessageIds.clear();
+            }
+        }, 30 * 60 * 1000); // 每30分钟清理一次
+    }
+
+    // ========== 2. 获取消息预览 ==========
+    function getMessagePreview(message) {
+        if (!message) return { title: '新消息', body: '' };
+        
+        const settings = window.settings || {};
+        const partnerName = settings.partnerName || '对方';
+        
+        let title = partnerName;
+        let body = '';
+        let icon = getPartnerAvatar();
+
+        // 根据消息类型处理
+        if (message.text) {
+            // 文字消息
+            body = message.text;
+            
+            // 添加表情符号
+            const emojis = ['💬', '✉️', '📨', '💭', '💌'];
+            const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+            title = `${randomEmoji} ${partnerName}`;
+            
+        } else if (message.image) {
+            // 图片消息
+            body = '🖼️ 发来了一张图片';
+            title = `📸 ${partnerName}`;
+        } else {
+            body = '💬 发来了一条新消息';
+        }
+
+        // 处理长消息
+        if (body.length > NOTIF_CONFIG.MAX_BODY_LENGTH) {
+            body = body.substring(0, NOTIF_CONFIG.MAX_BODY_LENGTH) + '...';
+        }
+
+        // 如果有回复引用
+        if (message.replyTo) {
+            const repliedText = message.replyTo.text || '一条消息';
+            body += `\n\n↩️ 回复: "${repliedText.substring(0, 30)}${repliedText.length > 30 ? '...' : ''}"`;
+        }
+
+        return { title, body, icon };
+    }
+
+    // ========== 3. 获取对方头像 ==========
+    function getPartnerAvatar() {
+        const avatarImg = document.querySelector('#partner-avatar img');
+        return avatarImg ? avatarImg.src : 'https://file.youtochat.com/images/20260216/1771224856844_qdqqd.jpeg';
+    }
+
+    // ========== 4. 显示通知（核心功能） ==========
+    async function showNotification(message) {
+        // 权限检查
+        if (Notification.permission !== 'granted') return;
+        
+        // 页面可见时不弹
+        if (!document.hidden) return;
+        
+        // 检查是否开启通知
+        if (localStorage.getItem('notifEnabled') !== '1') return;
+
+        // 防重复检查（同一消息只通知一次）
+        if (lastNotifiedMessageIds.has(message.id)) return;
+        
+        // 防抖检查（短时间内不重复）
+        const now = Date.now();
+        if (now - lastNotificationTime < NOTIF_CONFIG.DEBOUNCE_TIME) return;
+        
+        lastNotificationTime = now;
+        lastNotifiedMessageIds.add(message.id);
+
+        try {
+            const { title, body, icon } = getMessagePreview(message);
+            
+            // 通知选项
+            const options = {
+                body: body,
+                icon: icon,
+                badge: icon,
+                tag: 'chat-msg-' + message.id,
+                renotify: true,
+                silent: !NOTIF_CONFIG.SOUND_ENABLED,
+                vibrate: NOTIF_CONFIG.VIBRATION_PATTERN,
+                requireInteraction: true, // 通知不自动消失
+                timestamp: message.timestamp || Date.now(),
+                data: {
+                    messageId: message.id,
+                    text: message.text,
+                    image: message.image,
+                    url: window.location.href
+                },
+                actions: [
+                    {
+                        action: 'open',
+                        title: '打开聊天'
+                    },
+                    {
+                        action: 'reply',
+                        title: '快速回复'
+                    },
+                    {
+                        action: 'close',
+                        title: '关闭'
+                    }
+                ]
+            };
+
+            // 使用 Service Worker 或普通 Notification
+            let notification;
+            if (serviceWorkerRegistration && 'showNotification' in serviceWorkerRegistration) {
+                await serviceWorkerRegistration.showNotification(title, options);
+                notification = { close: () => {} }; // 占位
+            } else {
+                notification = new Notification(title, options);
+            }
+
+            // 处理通知点击
+            const handleNotificationClick = (event) => {
+                event.preventDefault();
+                window.focus();
+                
+                // 尝试定位到这条消息
+                setTimeout(() => {
+                    const msgElement = document.querySelector(`.message-wrapper[data-id="${message.id}"]`);
+                    if (msgElement) {
+                        msgElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        msgElement.classList.add('highlight-message');
+                        setTimeout(() => msgElement.classList.remove('highlight-message'), 2000);
+                    }
+                }, 500);
+            };
+
+            // 处理通知按钮点击
+            const handleNotificationAction = (event) => {
+                if (event.action === 'open') {
+                    window.focus();
+                } else if (event.action === 'reply') {
+                    window.focus();
+                    // 聚焦输入框
+                    setTimeout(() => {
+                        const input = document.getElementById('message-input');
+                        if (input) {
+                            input.focus();
+                            input.value = `@回复 ${message.sender === 'user' ? '我' : (settings.partnerName || '对方')} `;
+                        }
+                    }, 500);
+                }
+                notification.close();
+            };
+
+            // 绑定事件（仅对普通Notification有效）
+            if (!serviceWorkerRegistration) {
+                notification.onclick = handleNotificationClick;
+                notification.onaction = handleNotificationAction;
+            }
+
+            // 播放提示音
+            if (window.playSound && typeof window.playSound === 'function') {
+                window.playSound('message');
+            }
+
+            console.log('✅ 通知已发送:', title, body);
+
+        } catch (e) {
+            console.error('❌ 显示通知失败:', e);
+        }
+    }
+
+    // ========== 5. 增强 addMessage 函数 ==========
+    function enhanceAddMessage() {
+        const originalAddMessage = window.addMessage;
+        if (!originalAddMessage) {
+            console.warn('addMessage 函数未找到');
+            return;
+        }
+
+        window.addMessage = function(message) {
+            // 调用原始方法
+            originalAddMessage(message);
+            
+            // 如果是后台且对方发的消息，显示通知
+            if (document.hidden && 
+                localStorage.getItem('notifEnabled') === '1' && 
+                message.sender === 'partner') {
+                
+                // 延迟一点显示，让消息先保存
+                setTimeout(() => {
+                    showNotification(message);
+                }, 300);
+            }
+        };
+
+        console.log('✅ addMessage 已增强');
+    }
+
+    // ========== 6. 定时检查新消息（兜底方案） ==========
+    function startNotificationCheck() {
+        if (notificationCheckInterval) {
+            clearInterval(notificationCheckInterval);
+        }
+        
+        notificationCheckInterval = setInterval(() => {
+            // 只在后台运行
+            if (!document.hidden && localStorage.getItem('notifEnabled') === '1') {
+                return;
+            }
+
+            const messages = window.messages || [];
+            const currentCount = messages.length;
+            
+            if (lastMessageCount > 0 && currentCount > lastMessageCount) {
+                const newMessages = messages.slice(lastMessageCount);
+                newMessages.forEach(msg => {
+                    if (msg.sender === 'partner') {
+                        showNotification(msg);
+                    }
+                });
+            }
+            
+            lastMessageCount = currentCount;
+        }, NOTIF_CONFIG.CHECK_INTERVAL);
+
+        console.log('✅ 通知检查已启动，间隔:', NOTIF_CONFIG.CHECK_INTERVAL + 'ms');
+    }
+
+    // ========== 7. 添加测试按钮 ==========
+    function addTestNotificationButton() {
+        const notifSection = document.querySelector('#data-modal .settings-section:first-child');
+        if (!notifSection || document.getElementById('test-notification-btn')) return;
+
+        const testBtn = document.createElement('button');
+        testBtn.id = 'test-notification-btn';
+        testBtn.className = 'modal-btn modal-btn-secondary';
+        testBtn.style.cssText = 'margin-top:10px; width:100%; padding:12px; font-size:13px; background: linear-gradient(135deg, var(--accent-color), var(--accent-color-dark)); color: white; border: none;';
+        testBtn.innerHTML = '<i class="fas fa-bell"></i> 发送测试通知（请切换到后台）';
+        
+        testBtn.onclick = async () => {
+            if (Notification.permission === 'granted') {
+                // 创建一条模拟消息
+                const testMessage = {
+                    id: 'test-' + Date.now(),
+                    sender: 'partner',
+                    text: '这是一条测试消息，看看能不能正常显示 🎉',
+                    timestamp: new Date()
+                };
+                
+                // 直接显示测试通知
+                await showNotification(testMessage);
+                
+                // 提示用户切换到后台
+                const overlay = document.createElement('div');
+                overlay.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--accent-color);color:white;padding:12px 24px;border-radius:30px;z-index:100000;font-size:14px;box-shadow:0 4px 15px rgba(0,0,0,0.2);animation:fadeInOut 3s ease;';
+                overlay.innerHTML = '📱 测试通知已发送，请切换到后台查看';
+                document.body.appendChild(overlay);
+                setTimeout(() => overlay.remove(), 3000);
+            } else {
+                alert('请先开启通知权限');
+            }
+        };
+        
+        notifSection.appendChild(testBtn);
+    }
+
+    // ========== 8. 增强原有的 handleNotifToggle ==========
+    const originalHandleNotifToggle = window.handleNotifToggle;
+    window.handleNotifToggle = async function(checkbox) {
+        const statusEl = document.getElementById('notif-status-text');
+        
+        if (!('Notification' in window)) {
+            checkbox.checked = false;
+            if (statusEl) statusEl.textContent = '⚠️ 您的浏览器不支持通知功能';
+            return;
+        }
+
+        if (checkbox.checked) {
+            try {
+                const permission = await Notification.requestPermission();
+                
+                if (permission === 'granted') {
+                    if (statusEl) {
+                        statusEl.innerHTML = '✅ 已开启 — 后台时会弹出通知<br>' +
+                            '<span style="font-size:10px; opacity:0.7;">📱 振动提醒 · 快速回复 · 点击定位消息</span>';
+                    }
+                    localStorage.setItem('notifEnabled', '1');
+                    
+                    // 初始化消息计数
+                    lastMessageCount = window.messages ? window.messages.length : 0;
+                    
+                    // 启动定时检查
+                    startNotificationCheck();
+                    
+                    // 发送欢迎通知
+                    setTimeout(async () => {
+                        if (document.hidden) {
+                            await showNotification({
+                                id: 'welcome-' + Date.now(),
+                                sender: 'partner',
+                                text: '通知已开启，有新消息时会在这里显示 ✨',
+                                timestamp: new Date()
+                            });
+                        } else {
+                            alert('✓ 通知已开启，请切换到后台测试');
+                        }
+                    }, 1500);
+                    
+                } else if (permission === 'denied') {
+                    checkbox.checked = false;
+                    if (statusEl) statusEl.textContent = '❌ 通知被拒绝，请在浏览器设置中允许';
+                    localStorage.setItem('notifEnabled', '0');
+                } else {
+                    checkbox.checked = false;
+                    if (statusEl) statusEl.textContent = '⚠️ 未选择权限';
+                    localStorage.setItem('notifEnabled', '0');
+                }
+            } catch (e) {
+                console.error('请求权限失败:', e);
+                checkbox.checked = false;
+                if (statusEl) statusEl.textContent = '❌ 开启失败：' + e.message;
+                localStorage.setItem('notifEnabled', '0');
+            }
+        } else {
+            if (statusEl) statusEl.textContent = '已关闭 — 将不再接收通知';
+            localStorage.setItem('notifEnabled', '0');
+            
+            // 停止定时检查
+            if (notificationCheckInterval) {
+                clearInterval(notificationCheckInterval);
+                notificationCheckInterval = null;
+            }
+        }
+    };
+
+    // ========== 9. 初始化 ==========
+    async function init() {
+        console.log('🚀 初始化增强版通知系统...');
+        
+        // 初始化系统
+        await initNotificationSystem();
+        
+        // 增强 addMessage
+        enhanceAddMessage();
+        
+        // 如果已开启通知，启动检查
+        if (localStorage.getItem('notifEnabled') === '1' && 
+            Notification.permission === 'granted') {
+            startNotificationCheck();
+        }
+        
+        // 添加测试按钮
+        setTimeout(addTestNotificationButton, 2000);
+        
+        console.log('✅ 增强版通知系统初始化完成');
+    }
+
+    // ========== 10. 监听页面可见性变化 ==========
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            // 页面隐藏时，更新消息计数
+            lastMessageCount = window.messages ? window.messages.length : 0;
+            console.log('📱 页面进入后台，准备接收通知');
+        } else {
+            console.log('💻 页面回到前台');
+        }
+    });
+
+    // ========== 11. 添加CSS动画 ==========
+    const style = document.createElement('style');
+    style.textContent = `
+        .highlight-message {
+            animation: messageFlash 2s ease;
+        }
+        @keyframes messageFlash {
+            0%, 100% { box-shadow: 0 0 0 0 var(--accent-color); }
+            20%, 80% { box-shadow: 0 0 0 4px var(--accent-color); }
+        }
+        @keyframes fadeInOut {
+            0% { opacity:0; transform:translateX(-50%) translateY(-20px); }
+            15% { opacity:1; transform:translateX(-50%) translateY(0); }
+            85% { opacity:1; transform:translateX(-50%) translateY(0); }
+            100% { opacity:0; transform:translateX(-50%) translateY(-20px); }
+        }
+    `;
+    document.head.appendChild(style);
+
+    // ========== 12. 启动 ==========
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+})();
+</script>
 </body>
 </html>
