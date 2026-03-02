@@ -16122,7 +16122,6 @@ function doPick() {
 function renderMyStickerLibrary() {
     contentArea.innerHTML = '';
     
-    // 设置内容区域为弹性容器
     contentArea.style.cssText = `
         display: flex;
         flex-direction: column;
@@ -16140,7 +16139,11 @@ function renderMyStickerLibrary() {
         background: linear-gradient(135deg, rgba(var(--accent-color-rgb),0.08), rgba(var(--accent-color-rgb),0.02));
         border-bottom: 1px solid rgba(var(--accent-color-rgb),0.15);
         flex-shrink: 0;
+        flex-wrap: wrap;
     `;
+    
+    const partnerName = settings.partnerName || '对方';
+    const myName = settings.myName || '我';
     
     importBar.innerHTML = `
         <button class="sticker-batch-import-btn" style="
@@ -16182,6 +16185,45 @@ function renderMyStickerLibrary() {
             <i class="fas fa-upload"></i>
             <span>上传</span>
         </button>
+        <!-- 同步按钮组 -->
+        <div style="display: flex; gap: 4px; margin-left: auto;">
+            <button class="sticker-sync-btn" id="sync-to-partner-btn" style="
+                width: 48px;
+                height: 48px;
+                background: linear-gradient(135deg, #6BCB77, #4CAF50);
+                color: white;
+                border: none;
+                border-radius: 12px;
+                cursor: pointer;
+                font-size: 18px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: all 0.2s;
+                box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+            " title="同步到对方表情库">
+                <i class="fas fa-arrow-right"></i>
+                <i class="fas fa-images" style="font-size: 12px; margin-left: -4px;"></i>
+            </button>
+            <button class="sticker-sync-btn" id="sync-from-partner-btn" style="
+                width: 48px;
+                height: 48px;
+                background: linear-gradient(135deg, #FF9A8B, #FF6B6B);
+                color: white;
+                border: none;
+                border-radius: 12px;
+                cursor: pointer;
+                font-size: 18px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: all 0.2s;
+                box-shadow: 0 2px 8px rgba(255, 107, 107, 0.3);
+            " title="从对方表情库同步">
+                <i class="fas fa-arrow-left"></i>
+                <i class="fas fa-images" style="font-size: 12px; margin-right: -4px;"></i>
+            </button>
+        </div>
     `;
     
     contentArea.appendChild(importBar);
@@ -16191,6 +16233,19 @@ function renderMyStickerLibrary() {
         e.stopPropagation();
         batchImportStickersByUrl('my');
     };
+
+    // 绑定同步按钮事件
+    const syncToBtn = importBar.querySelector('#sync-to-partner-btn');
+    syncToBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showSyncDialog('myToPartner');
+    });
+
+    const syncFromBtn = importBar.querySelector('#sync-from-partner-btn');
+    syncFromBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showSyncDialog('partnerToMy');
+    });
 
     // 创建可滚动的网格容器
     const scrollContainer = document.createElement('div');
@@ -16261,12 +16316,10 @@ function renderMyStickerLibrary() {
     
     contentArea.appendChild(scrollContainer);
 }
-
     // ========== 对方的表情库（修复滚动问题） ==========
 function renderPartnerStickerLibrary() {
     contentArea.innerHTML = '';
     
-    // 设置内容区域为弹性容器
     contentArea.style.cssText = `
         display: flex;
         flex-direction: column;
@@ -16275,7 +16328,6 @@ function renderPartnerStickerLibrary() {
         padding: 0;
     `;
     
-    // 创建固定顶部的导入栏
     const importBar = document.createElement('div');
     importBar.style.cssText = `
         display: flex;
@@ -16284,9 +16336,11 @@ function renderPartnerStickerLibrary() {
         background: linear-gradient(135deg, rgba(var(--accent-color-rgb),0.08), rgba(var(--accent-color-rgb),0.02));
         border-bottom: 1px solid rgba(var(--accent-color-rgb),0.15);
         flex-shrink: 0;
+        flex-wrap: wrap;
     `;
     
     const partnerName = settings.partnerName || '对方';
+    const myName = settings.myName || '我';
     
     importBar.innerHTML = `
         <button class="sticker-batch-import-btn" style="
@@ -16328,7 +16382,63 @@ function renderPartnerStickerLibrary() {
             <i class="fas fa-upload"></i>
             <span>上传</span>
         </button>
-    `;
+        <!-- 同步按钮组 -->
+        <div style="display: flex; gap: 4px; margin-left: auto;">
+            <button class="sticker-sync-btn" id="sync-to-me-btn" style="
+                width: 48px;
+                height: 48px;
+                background: linear-gradient(135deg, #6BCB77, #4CAF50);
+                color: white;
+                border: none;
+                border-radius: 12px;
+                cursor: pointer;
+                font-size: 18px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: all 0.2s;
+                box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+            " title="同步到我的表情库">
+                <i class="fas fa-arrow-right"></i>
+                <i class="fas fa-user" style="font-size: 12px; margin-left: -4px;"></i>
+            </button>
+            <button class="sticker-sync-btn" id="sync-from-me-btn" style="
+                width: 48px;
+                height: 48px;
+                background: linear-gradient(135deg, #FF9A8B, #FF6B6B);
+                color: white;
+                border: none;
+                border-radius: 12px;
+                cursor: pointer;
+                font-size: 18px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: all 0.2s;
+                box-shadow: 0 2px 8px rgba(255, 107, 107, 0.3);
+            " title="从我的表情库同步">
+                <i class="fas fa-arrow-left"></i>
+                <i class="fas fa-heart" style="font-size: 12px; margin-right: -4px;"></i>
+            </button>
+        </div>
+ <button class="sticker-fix-btn" id="fix-stickers-btn" style="
+        width: 48px;
+        height: 48px;
+        background: linear-gradient(135deg, #ff4757, #ff6b81);
+        color: white;
+        border: none;
+        border-radius: 12px;
+        cursor: pointer;
+        font-size: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s;
+        box-shadow: 0 2px 8px rgba(255, 71, 87, 0.3);
+    " title="修复无法显示的图片">
+        <i class="fas fa-wrench"></i>
+    </button>
+`;
     
     contentArea.appendChild(importBar);
     
@@ -16337,6 +16447,25 @@ function renderPartnerStickerLibrary() {
         e.stopPropagation();
         batchImportStickersByUrl('partner');
     };
+const fixBtn = importBar.querySelector('#fix-stickers-btn');
+if (fixBtn) {
+    fixBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        fixBrokenImages();
+    });
+}
+    // 绑定同步按钮事件
+    const syncToBtn = importBar.querySelector('#sync-to-me-btn');
+    syncToBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showSyncDialog('partnerToMy');
+    });
+
+    const syncFromBtn = importBar.querySelector('#sync-from-me-btn');
+    syncFromBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showSyncDialog('myToPartner');
+    });
 
     // 创建可滚动的网格容器
     const scrollContainer = document.createElement('div');
@@ -16407,7 +16536,6 @@ function renderPartnerStickerLibrary() {
     
     contentArea.appendChild(scrollContainer);
 }
-
     function renderUserPokeMenu() {
         contentArea.innerHTML = '';
 
@@ -23834,6 +23962,419 @@ document.addEventListener('DOMContentLoaded', () => {
         enhancePasteHandler();
     }, 1000);
 });
+</script>
+<script>
+/**
+ * 将图片URL转换为Base64
+ * @param {string} url 图片URL
+ * @returns {Promise<string>} Base64数据
+ */
+function urlToBase64(url) {
+    return new Promise((resolve, reject) => {
+        // 创建一个新的Image对象
+        const img = new Image();
+        
+        // 设置跨域属性（重要！）
+        img.crossOrigin = 'Anonymous';
+        
+        img.onload = () => {
+            // 创建canvas
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            
+            // 绘制图片
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            
+            // 转换为Base64
+            try {
+                const dataURL = canvas.toDataURL('image/jpeg', 0.9);
+                resolve(dataURL);
+            } catch (e) {
+                reject(new Error('图片转换失败：' + e.message));
+            }
+            
+            // 清理
+            URL.revokeObjectURL(img.src);
+        };
+        
+        img.onerror = () => {
+            reject(new Error('图片加载失败，可能被防盗链限制'));
+        };
+        
+        // 尝试添加随机参数绕过缓存
+        const separator = url.includes('?') ? '&' : '?';
+        img.src = url + separator + 't=' + Date.now();
+    });
+}
+
+/**
+ * 修复无法显示的图片
+ */
+async function fixBrokenImages() {
+    const partnerName = settings.partnerName || '对方';
+    
+    if (!stickerLibrary || stickerLibrary.length === 0) {
+        showNotification(`${partnerName}的表情库是空的，没有图片需要修复`, 'info');
+        return;
+    }
+    
+    // 显示进度提示
+    showNotification('正在检查图片...', 'info');
+    
+    let fixedCount = 0;
+    let failedCount = 0;
+    let skippedCount = 0;
+    
+    // 创建进度提示
+    const progressDiv = document.createElement('div');
+    progressDiv.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: var(--secondary-bg);
+        border-radius: 16px;
+        padding: 20px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        z-index: 10003;
+        min-width: 280px;
+        text-align: center;
+        border: 1px solid var(--border-color);
+    `;
+    progressDiv.innerHTML = `
+        <div style="margin-bottom: 15px;">
+            <i class="fas fa-sync-alt fa-spin" style="font-size: 30px; color: var(--accent-color);"></i>
+        </div>
+        <div style="font-size: 16px; font-weight: 600; margin-bottom: 10px;">正在修复图片...</div>
+        <div style="font-size: 14px; color: var(--text-secondary);" id="fix-progress-text">0/${stickerLibrary.length}</div>
+        <div style="width: 100%; height: 4px; background: var(--border-color); border-radius: 2px; margin-top: 15px;">
+            <div id="fix-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--accent-color), #ff6b81); border-radius: 2px; transition: width 0.3s;"></div>
+        </div>
+    `;
+    document.body.appendChild(progressDiv);
+    
+    for (let i = 0; i < stickerLibrary.length; i++) {
+        const item = stickerLibrary[i];
+        
+        // 更新进度
+        const progressText = document.getElementById('fix-progress-text');
+        const progressBar = document.getElementById('fix-progress-bar');
+        if (progressText) {
+            progressText.textContent = `${i + 1}/${stickerLibrary.length}`;
+        }
+        if (progressBar) {
+            progressBar.style.width = `${((i + 1) / stickerLibrary.length) * 100}%`;
+        }
+        
+        // 只修复URL格式的图片（不是Base64的）
+        if (typeof item === 'string' && item.startsWith('http')) {
+            try {
+                // 尝试转换为Base64
+                const base64 = await urlToBase64(item);
+                stickerLibrary[i] = base64;
+                fixedCount++;
+                
+                // 稍微延迟一下，避免请求太快
+                await new Promise(resolve => setTimeout(resolve, 100));
+            } catch (err) {
+                failedCount++;
+                console.error('修复失败:', item, err);
+            }
+        } else {
+            skippedCount++;
+        }
+    }
+    
+    // 移除进度提示
+    progressDiv.remove();
+    
+    if (fixedCount > 0) {
+        // 保存数据
+        throttledSaveData();
+        
+        // 刷新显示
+        renderPartnerStickerLibrary();
+        
+        // 显示成功消息
+        showNotification(
+            `✨ 修复完成！\n成功: ${fixedCount} 个\n失败: ${failedCount} 个\n跳过(已是本地图片): ${skippedCount} 个`, 
+            'success', 
+            5000
+        );
+    } else if (failedCount > 0) {
+        showNotification(`❌ 所有图片都修复失败，可能是链接已失效或网站有防盗链`, 'error', 4000);
+    } else {
+        showNotification(`✅ 所有图片都已经是本地格式，无需修复`, 'info', 3000);
+    }
+}
+</script>
+<script>
+// ==================== 表情同步功能 ====================
+
+/**
+ * 显示同步对话框
+ * @param {string} direction - 同步方向: 'myToPartner' 或 'partnerToMy'
+ */
+function showSyncDialog(direction) {
+    const partnerName = settings.partnerName || '对方';
+    const myName = settings.myName || '我';
+    
+    let title, message, sourceCount, targetCount;
+    
+    if (direction === 'myToPartner') {
+        title = `同步到 ${partnerName} 的表情库`;
+        message = `将把你的 ${myStickerLibrary?.length || 0} 个表情同步到 ${partnerName} 的表情库中`;
+        sourceCount = myStickerLibrary?.length || 0;
+        targetCount = stickerLibrary?.length || 0;
+    } else {
+        title = `从 ${partnerName} 同步表情`;
+        message = `将把 ${partnerName} 的 ${stickerLibrary?.length || 0} 个表情同步到你的表情库中`;
+        sourceCount = stickerLibrary?.length || 0;
+        targetCount = myStickerLibrary?.length || 0;
+    }
+    
+    const dialog = document.createElement('div');
+    dialog.style.cssText = `
+        position: fixed;
+        inset: 0;
+        z-index: 10002;
+        background: rgba(0,0,0,0.5);
+        backdrop-filter: blur(8px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+    `;
+    
+    dialog.innerHTML = `
+        <div style="
+            background: var(--secondary-bg);
+            border-radius: 24px;
+            width: 100%;
+            max-width: 400px;
+            padding: 24px 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            animation: modalSlideUp 0.3s ease;
+        ">
+            <div style="
+                font-size: 18px;
+                font-weight: 600;
+                color: var(--text-primary);
+                margin-bottom: 16px;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            ">
+                <i class="fas fa-sync-alt" style="color: #6BCB77;"></i>
+                ${title}
+            </div>
+            
+            <div style="
+                display: flex;
+                justify-content: space-around;
+                margin-bottom: 20px;
+                padding: 20px 0;
+                background: linear-gradient(135deg, rgba(var(--accent-color-rgb),0.05), rgba(var(--accent-color-rgb),0.02));
+                border-radius: 16px;
+            ">
+                <div style="text-align: center;">
+                    <div style="font-size: 32px; margin-bottom: 8px;">
+                        <i class="fas fa-user" style="color: var(--accent-color);"></i>
+                    </div>
+                    <div style="font-weight: 600; font-size: 14px;">${myName}</div>
+                    <div style="font-size: 24px; font-weight: bold; color: var(--accent-color);">${myStickerLibrary?.length || 0}</div>
+                </div>
+                
+                <div style="font-size: 24px; display: flex; align-items: center; color: var(--text-secondary);">
+                    <i class="fas fa-exchange-alt"></i>
+                </div>
+                
+                <div style="text-align: center;">
+                    <div style="font-size: 32px; margin-bottom: 8px;">
+                        <i class="fas fa-heart" style="color: #ff6b6b;"></i>
+                    </div>
+                    <div style="font-weight: 600; font-size: 14px;">${partnerName}</div>
+                    <div style="font-size: 24px; font-weight: bold; color: #ff6b6b;">${stickerLibrary?.length || 0}</div>
+                </div>
+            </div>
+            
+            <div style="
+                margin-bottom: 20px;
+                padding: 16px;
+                background: linear-gradient(135deg, rgba(var(--accent-color-rgb),0.08), rgba(var(--accent-color-rgb),0.02));
+                border-radius: 12px;
+            ">
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="radio" name="sync-mode" value="merge" checked style="accent-color: #6BCB77;">
+                        <span style="font-size: 14px;">🔄 合并（保留双方所有表情）</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="radio" name="sync-mode" value="overwrite" style="accent-color: #6BCB77;">
+                        <span style="font-size: 14px;">📋 覆盖（目标库完全等于源库）</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="radio" name="sync-mode" value="append" style="accent-color: #6BCB77;">
+                        <span style="font-size: 14px;">➕ 追加（仅添加新表情，保留原有）</span>
+                    </label>
+                </div>
+            </div>
+            
+            <div style="
+                margin-bottom: 20px;
+                font-size: 12px;
+                color: var(--text-secondary);
+                padding: 10px 12px;
+                background: rgba(var(--accent-color-rgb), 0.08);
+                border-radius: 12px;
+            ">
+                <i class="fas fa-info-circle" style="color: var(--accent-color); margin-right: 6px;"></i>
+                已存在的表情不会重复添加，同步后两个表情库将关联显示
+            </div>
+            
+            <div style="display: flex; gap: 10px;">
+                <button class="sync-cancel-btn" style="
+                    flex: 1;
+                    padding: 14px;
+                    border: 1.5px solid var(--border-color);
+                    border-radius: 14px;
+                    background: transparent;
+                    color: var(--text-secondary);
+                    font-size: 15px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    font-family: var(--font-family);
+                ">取消</button>
+                
+                <button class="sync-confirm-btn" style="
+                    flex: 2;
+                    padding: 14px;
+                    border: none;
+                    border-radius: 14px;
+                    background: #6BCB77;
+                    color: white;
+                    font-size: 15px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 8px;
+                    font-family: var(--font-family);
+                    box-shadow: 0 4px 12px rgba(107, 203, 119, 0.3);
+                ">
+                    <i class="fas fa-check"></i>
+                    开始同步
+                </button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(dialog);
+    
+    // 点击遮罩关闭
+    dialog.addEventListener('click', (e) => {
+        if (e.target === dialog) dialog.remove();
+    });
+    
+    // 取消按钮
+    dialog.querySelector('.sync-cancel-btn').addEventListener('click', () => {
+        dialog.remove();
+    });
+    
+    // 确认同步按钮
+    dialog.querySelector('.sync-confirm-btn').addEventListener('click', () => {
+        const selectedMode = dialog.querySelector('input[name="sync-mode"]:checked').value;
+        syncStickers(direction, selectedMode);
+        dialog.remove();
+    });
+}
+
+/**
+ * 执行同步操作
+ * @param {string} direction - 同步方向: 'myToPartner' 或 'partnerToMy'
+ * @param {string} mode - 模式: 'merge', 'overwrite', 'append'
+ */
+function syncStickers(direction, mode) {
+    const partnerName = settings.partnerName || '对方';
+    const myName = settings.myName || '我';
+    
+    let sourceCount = 0;
+    let targetCount = 0;
+    let resultMessage = '';
+    
+    if (direction === 'myToPartner') {
+        sourceCount = myStickerLibrary?.length || 0;
+        targetCount = stickerLibrary?.length || 0;
+        
+        switch (mode) {
+            case 'merge':
+                // 合并双方表情
+                const merged = [...new Set([...stickerLibrary, ...myStickerLibrary])];
+                stickerLibrary = merged;
+                myStickerLibrary = merged;
+                resultMessage = `✨ 合并完成！双方现在都有 ${merged.length} 个表情`;
+                break;
+                
+            case 'overwrite':
+                // 用我的覆盖对方的
+                stickerLibrary = [...myStickerLibrary];
+                resultMessage = `✨ 已将你的 ${sourceCount} 个表情同步给 ${partnerName}`;
+                break;
+                
+            case 'append':
+                // 仅添加新表情到对方
+                const combined = [...new Set([...stickerLibrary, ...myStickerLibrary])];
+                stickerLibrary = combined;
+                const added = combined.length - targetCount;
+                resultMessage = `✨ 为 ${partnerName} 新增了 ${added} 个表情`;
+                break;
+        }
+    } else {
+        sourceCount = stickerLibrary?.length || 0;
+        targetCount = myStickerLibrary?.length || 0;
+        
+        switch (mode) {
+            case 'merge':
+                // 合并双方表情
+                const merged = [...new Set([...myStickerLibrary, ...stickerLibrary])];
+                myStickerLibrary = merged;
+                stickerLibrary = merged;
+                resultMessage = `✨ 合并完成！双方现在都有 ${merged.length} 个表情`;
+                break;
+                
+            case 'overwrite':
+                // 用对方的覆盖我的
+                myStickerLibrary = [...stickerLibrary];
+                resultMessage = `✨ 已将 ${partnerName} 的 ${sourceCount} 个表情同步给你`;
+                break;
+                
+            case 'append':
+                // 仅添加新表情到我
+                const combined = [...new Set([...myStickerLibrary, ...stickerLibrary])];
+                myStickerLibrary = combined;
+                const added = combined.length - targetCount;
+                resultMessage = `✨ 为你的表情库新增了 ${added} 个表情`;
+                break;
+        }
+    }
+    
+    // 保存数据
+    throttledSaveData();
+    
+    // 刷新两个视图
+    if (typeof renderMyStickerLibrary === 'function') {
+        renderMyStickerLibrary();
+    }
+    if (typeof renderPartnerStickerLibrary === 'function') {
+        renderPartnerStickerLibrary();
+    }
+    
+    // 显示结果
+    showNotification(resultMessage, 'success', 4000);
+}
 </script>
 </body>
 </html>
