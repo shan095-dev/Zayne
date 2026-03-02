@@ -24907,6 +24907,795 @@ document.addEventListener('DOMContentLoaded', () => {
         optimizeReplyLibraryForMobile();
     }, 1000);
 });
+// ==================== 强制移动端优化（保留所有功能，包含完整URL导入） ====================
+(function() {
+    // 直接隐藏顶部的工具栏
+    function forceHideToolbar() {
+        const toolbar = document.getElementById('cr-toolbar');
+        if (toolbar) {
+            toolbar.style.setProperty('display', 'none', 'important');
+        }
+    }
+
+    // 在回复库打开时，自动添加底部按钮（保留所有功能）
+    function addBottomButtons() {
+        const modal = document.getElementById('custom-replies-modal');
+        if (!modal) return;
+
+        // 检查是否已经添加过
+        if (modal.querySelector('.mobile-bottom-toolbar')) return;
+
+        // 找到按钮容器
+        const buttonsContainer = modal.querySelector('.modal-buttons');
+        if (!buttonsContainer) return;
+
+        // 获取当前标签页
+        const currentTab = document.querySelector('.reply-tab-btn.active')?.dataset?.id || 'custom';
+        
+        // 创建底部工具栏
+        const bottomBar = document.createElement('div');
+        bottomBar.className = 'mobile-bottom-toolbar';
+        bottomBar.style.cssText = `
+            position: sticky;
+            bottom: 70px;
+            left: 0;
+            right: 0;
+            background: var(--secondary-bg);
+            border-top: 1px solid var(--border-color);
+            border-bottom: 1px solid var(--border-color);
+            padding: 8px 12px;
+            display: flex;
+            gap: 6px;
+            z-index: 100;
+            margin: 10px 0;
+            backdrop-filter: blur(10px);
+            flex-wrap: wrap;
+        `;
+        
+        let buttons = '';
+        
+        if (currentTab === 'stickers') {
+            // 表情库标签页 - 保留所有功能，包括URL导入
+            buttons = `
+                <button class="modal-btn modal-btn-primary" style="flex:1; min-width:50px; padding: 10px 4px; font-size: 12px;" onclick="document.getElementById('sticker-file-input').click()" title="上传图片">
+                    <i class="fas fa-upload"></i> <span class="btn-text">上传</span>
+                </button>
+                <button class="modal-btn modal-btn-secondary" style="flex:1; min-width:50px; padding: 10px 4px; font-size: 12px;" onclick="document.getElementById('import-replies-input').click()" title导入JSON">
+                    <i class="fas fa-file-import"></i> <span class="btn-text">JSON</span>
+                </button>
+                <button class="modal-btn modal-btn-secondary" style="flex:1; min-width:50px; padding: 10px 4px; font-size: 12px; background: #6BCB77; color: white;" onclick="showFileImportDialog()" title="从TXT/DOCX文件导入">
+                    <i class="fas fa-file-alt"></i> <span class="btn-text">文件</span>
+                </button>
+                <button class="modal-btn modal-btn-secondary" style="flex:1; min-width:50px; padding: 10px 4px; font-size: 12px; background: #FF9A8B; color: white;" onclick="showUrlImportDialog()" title="批量URL导入">
+                    <i class="fas fa-link"></i> <span class="btn-text">URL</span>
+                </button>
+                <button class="modal-btn modal-btn-secondary" style="flex:1; min-width:50px; padding: 10px 4px; font-size: 12px;" onclick="exportReplies()" title="导出">
+                    <i class="fas fa-file-export"></i> <span class="btn-text">导出</span>
+                </button>
+                <button class="modal-btn modal-btn-secondary" style="flex:1; min-width:50px; padding: 10px 4px; font-size: 12px;" onclick="deduplicateReplies()" title="去重">
+                    <i class="fas fa-broom"></i> <span class="btn-text">去重</span>
+                </button>
+                <button class="modal-btn modal-btn-secondary" style="flex:1; min-width:50px; padding: 10px 4px; font-size: 12px; color: #ff4757;" onclick="toggleBatchDeleteMode()" title="批量删除">
+                    <i class="fas fa-trash-alt"></i> <span class="btn-text">批量</span>
+                </button>
+            `;
+        } else if (currentTab === 'emojis') {
+            // Emoji标签页
+            buttons = `
+                <button class="modal-btn modal-btn-primary" style="flex:1; min-width:60px; padding: 10px 4px; font-size: 12px;" onclick="addEmoji()" title="添加Emoji">
+                    <i class="fas fa-plus"></i> <span class="btn-text">添加</span>
+                </button>
+                <button class="modal-btn modal-btn-secondary" style="flex:1; min-width:60px; padding: 10px 4px; font-size: 12px;" onclick="document.getElementById('import-replies-input').click()" title="导入JSON">
+                    <i class="fas fa-file-import"></i> <span class="btn-text">导入</span>
+                </button>
+                <button class="modal-btn modal-btn-secondary" style="flex:1; min-width:60px; padding: 10px 4px; font-size: 12px;" onclick="exportReplies()" title="导出">
+                    <i class="fas fa-file-export"></i> <span class="btn-text">导出</span>
+                </button>
+                <button class="modal-btn modal-btn-secondary" style="flex:1; min-width:60px; padding: 10px 4px; font-size: 12px;" onclick="deduplicateReplies()" title="去重">
+                    <i class="fas fa-broom"></i> <span class="btn-text">去重</span>
+                </button>
+            `;
+        } else {
+            // 其他标签页（自定义回复、拍一拍等）
+            buttons = `
+                <button class="modal-btn modal-btn-primary" style="flex:1; min-width:60px; padding: 10px 4px; font-size: 12px;" onclick="document.getElementById('add-custom-reply').click()" title="新增">
+                    <i class="fas fa-plus"></i> <span class="btn-text">新增</span>
+                </button>
+                <button class="modal-btn modal-btn-secondary" style="flex:1; min-width:60px; padding: 10px 4px; font-size: 12px;" onclick="document.getElementById('import-replies-input').click()" title="导入JSON">
+                    <i class="fas fa-file-import"></i> <span class="btn-text">导入</span>
+                </button>
+                <button class="modal-btn modal-btn-secondary" style="flex:1; min-width:60px; padding: 10px 4px; font-size: 12px;" onclick="exportReplies()" title="导出">
+                    <i class="fas fa-file-export"></i> <span class="btn-text">导出</span>
+                </button>
+                <button class="modal-btn modal-btn-secondary" style="flex:1; min-width:60px; padding: 10px 4px; font-size: 12px;" onclick="deduplicateReplies()" title="去重">
+                    <i class="fas fa-broom"></i> <span class="btn-text">去重</span>
+                </button>
+            `;
+        }
+
+        bottomBar.innerHTML = buttons;
+        
+        // 插入到底部按钮之前
+        buttonsContainer.parentNode.insertBefore(bottomBar, buttonsContainer);
+    }
+
+    // 显示文件导入对话框（调用原有的文件导入功能）
+    window.showFileImportDialog = window.showFileImportDialog || function() {
+        // 检查是否已存在文件导入对话框函数
+        if (typeof showFileImportDialog === 'function' && window.showFileImportDialog !== arguments.callee) {
+            window.showFileImportDialog();
+            return;
+        }
+        
+        // 创建文件导入对话框
+        const modal = document.createElement('div');
+        modal.style.cssText = `
+            position: fixed;
+            inset: 0;
+            z-index: 10001;
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        `;
+        
+        modal.innerHTML = `
+            <div style="
+                background: var(--secondary-bg);
+                border-radius: 24px;
+                width: 100%;
+                max-width: 500px;
+                padding: 24px 20px;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                animation: modalSlideUp 0.3s ease;
+            ">
+                <div style="
+                    font-size: 18px;
+                    font-weight: 600;
+                    color: var(--text-primary);
+                    margin-bottom: 16px;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                ">
+                    <i class="fas fa-file-import" style="color: var(--accent-color);"></i>
+                    从文件批量导入表情
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <div style="
+                        background: linear-gradient(135deg, rgba(var(--accent-color-rgb),0.08), rgba(var(--accent-color-rgb),0.02));
+                        border-radius: 16px;
+                        padding: 16px;
+                        margin-bottom: 16px;
+                    ">
+                        <div style="font-size: 13px; color: var(--text-primary); margin-bottom: 10px; font-weight: 600;">
+                            📋 支持的文件格式：
+                        </div>
+                        <ul style="font-size: 12px; color: var(--text-secondary); line-height: 1.8; margin: 0; padding-left: 20px;">
+                            <li><strong>TXT文件</strong> - 每行一个图片URL</li>
+                            <li><strong>DOCX文件</strong> - 自动提取所有图片链接</li>
+                            <li><strong>直接粘贴</strong> - 支持从Word/Excel复制多行内容</li>
+                        </ul>
+                    </div>
+                    
+                    <div style="margin-bottom: 16px;">
+                        <label style="font-size: 13px; font-weight: 600; color: var(--text-primary); display: block; margin-bottom: 8px;">
+                            📎 选择文件 (TXT/DOCX)
+                        </label>
+                        <input type="file" id="bulk-file-import" accept=".txt,.docx,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="
+                            width: 100%;
+                            padding: 12px;
+                            border: 1.5px dashed var(--border-color);
+                            border-radius: 12px;
+                            background: var(--primary-bg);
+                            color: var(--text-primary);
+                            font-size: 13px;
+                            cursor: pointer;
+                        ">
+                        <div id="file-parse-status" style="font-size: 12px; margin-top: 8px; color: var(--text-secondary); display: none;"></div>
+                    </div>
+                    
+                    <div style="margin: 16px 0; text-align: center; color: var(--text-secondary); font-size: 12px; position: relative;">
+                        <span style="background: var(--secondary-bg); padding: 0 10px; position: relative; z-index: 2;">或者</span>
+                        <div style="position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: var(--border-color); z-index: 1;"></div>
+                    </div>
+                    
+                    <div>
+                        <label style="font-size: 13px; font-weight: 600; color: var(--text-primary); display: block; margin-bottom: 8px;">
+                            📝 直接粘贴URL列表
+                        </label>
+                        <textarea id="bulk-urls-textarea" 
+                            placeholder="每行一个图片链接，例如：&#10;https://example.com/image1.jpg&#10;https://example.com/image2.png&#10;https://example.com/image3.gif"
+                            style="
+                                width: 100%;
+                                height: 150px;
+                                padding: 12px;
+                                border: 1.5px solid var(--border-color);
+                                border-radius: 16px;
+                                background: var(--primary-bg);
+                                color: var(--text-primary);
+                                font-size: 13px;
+                                line-height: 1.5;
+                                resize: vertical;
+                                outline: none;
+                                font-family: var(--font-family);
+                            "
+                        ></textarea>
+                    </div>
+                    
+                    <div style="
+                        margin-top: 16px;
+                        font-size: 12px;
+                        color: var(--text-secondary);
+                        padding: 10px 12px;
+                        background: rgba(var(--accent-color-rgb), 0.08);
+                        border-radius: 12px;
+                    ">
+                        <i class="fas fa-info-circle" style="color: var(--accent-color); margin-right: 6px;"></i>
+                        已存在的URL不会重复添加，单次最多支持200个URL
+                    </div>
+                </div>
+                
+                <div style="display: flex; gap: 10px;">
+                    <button id="cancel-file-import" style="
+                        flex: 1;
+                        padding: 14px;
+                        border: 1.5px solid var(--border-color);
+                        border-radius: 14px;
+                        background: transparent;
+                        color: var(--text-secondary);
+                        font-size: 15px;
+                        font-weight: 600;
+                        cursor: pointer;
+                        font-family: var(--font-family);
+                    ">取消</button>
+                    
+                    <button id="confirm-file-import" style="
+                        flex: 2;
+                        padding: 14px;
+                        border: none;
+                        border-radius: 14px;
+                        background: var(--accent-color);
+                        color: white;
+                        font-size: 15px;
+                        font-weight: 600;
+                        cursor: pointer;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        gap: 8px;
+                        font-family: var(--font-family);
+                        box-shadow: 0 4px 12px rgba(var(--accent-color-rgb), 0.3);
+                    ">
+                        <i class="fas fa-download"></i>
+                        开始导入
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        const statusDiv = modal.querySelector('#file-parse-status');
+        const fileInput = modal.querySelector('#bulk-file-import');
+        const textarea = modal.querySelector('#bulk-urls-textarea');
+        
+        // 点击遮罩关闭
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) modal.remove();
+        });
+        
+        // 取消按钮
+        modal.querySelector('#cancel-file-import').addEventListener('click', () => {
+            modal.remove();
+        });
+        
+        // 文件选择处理
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            statusDiv.style.display = 'block';
+            statusDiv.textContent = '⏳ 正在解析文件...';
+            statusDiv.style.color = 'var(--accent-color)';
+            
+            try {
+                let content = '';
+                
+                // 根据文件类型处理
+                if (file.name.toLowerCase().endsWith('.docx')) {
+                    // 处理DOCX文件
+                    try {
+                        // 尝试加载mammoth库
+                        if (!window.mammoth) {
+                            await loadDocxLibrary();
+                        }
+                        const arrayBuffer = await file.arrayBuffer();
+                        const result = await window.mammoth.extractRawText({ arrayBuffer });
+                        content = result.value;
+                        statusDiv.textContent = '✅ DOCX文件解析成功';
+                    } catch (docxErr) {
+                        console.error('DOCX解析失败:', docxErr);
+                        statusDiv.textContent = '❌ DOCX解析失败，尝试作为文本读取';
+                        // 降级处理：尝试作为文本读取
+                        content = await file.text();
+                    }
+                } else {
+                    // 处理TXT文件
+                    content = await file.text();
+                    statusDiv.textContent = '✅ TXT文件读取成功';
+                }
+                
+                // 提取URL
+                const urls = extractUrlsFromText(content);
+                
+                if (urls.length > 0) {
+                    // 如果已有内容，询问是否追加
+                    if (textarea.value.trim()) {
+                        if (confirm(`检测到 ${urls.length} 个图片链接，是否追加到现有列表？\n点击确定：追加\n点击取消：替换`)) {
+                            textarea.value += '\n' + urls.join('\n');
+                        } else {
+                            textarea.value = urls.join('\n');
+                        }
+                    } else {
+                        textarea.value = urls.join('\n');
+                    }
+                    statusDiv.innerHTML = `✅ 已提取 ${urls.length} 个链接，<span style="color: #ff4757;">请点击下方"开始导入"按钮完成导入</span>`;
+                    statusDiv.style.color = '#6BCB77';
+                } else {
+                    statusDiv.textContent = '⚠️ 未找到有效的图片链接';
+                    statusDiv.style.color = '#ffa502';
+                }
+            } catch (err) {
+                console.error('文件读取失败:', err);
+                statusDiv.textContent = '❌ 文件读取失败：' + err.message;
+                statusDiv.style.color = '#ff4757';
+            }
+        });
+        
+        // 确认导入
+        modal.querySelector('#confirm-file-import').addEventListener('click', async () => {
+            const urlsText = textarea.value.trim();
+            
+            if (!urlsText) {
+                showNotification('请输入URL列表或选择文件', 'warning');
+                return;
+            }
+            
+            // 解析URL
+            const urlList = urlsText.split(/[\n\r]+/)
+                .map(url => url.trim())
+                .filter(url => {
+                    return url && (
+                        url.startsWith('http://') || 
+                        url.startsWith('https://') || 
+                        url.startsWith('data:image')
+                    ) && url.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?.*)?$/i);
+                });
+            
+            if (urlList.length === 0) {
+                showNotification('未检测到有效的图片链接（需以http开头，且包含常见图片格式）', 'error');
+                return;
+            }
+            
+            if (urlList.length > 200) {
+                showNotification('URL数量超过200个，请分批导入', 'warning');
+                return;
+            }
+            
+            // 显示处理中状态
+            const confirmBtn = modal.querySelector('#confirm-file-import');
+            const originalText = confirmBtn.innerHTML;
+            confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 处理中...';
+            confirmBtn.disabled = true;
+            
+            // 获取当前表情库
+            const targetLibrary = window.stickerLibrary || [];
+            const oldLength = targetLibrary.length;
+            
+            // 去重合并
+            const newUrls = [...new Set([...targetLibrary, ...urlList])];
+            
+            // 更新stickerLibrary
+            if (window.stickerLibrary) {
+                window.stickerLibrary.length = 0;
+                window.stickerLibrary.push(...newUrls);
+            }
+            
+            // 保存
+            if (typeof throttledSaveData === 'function') throttledSaveData();
+            
+            // 关闭弹窗
+            modal.remove();
+            
+            // 刷新显示
+            if (typeof renderReplyLibrary === 'function') renderReplyLibrary();
+            
+            // 显示成功消息
+            const addedCount = newUrls.length - oldLength;
+            showNotification(`✨ 成功导入 ${addedCount} 个表情，总数 ${newUrls.length} 个`, 'success');
+        });
+    };
+
+    // 显示URL导入对话框（简洁版）
+    window.showUrlImportDialog = window.showUrlImportDialog || function() {
+        const modal = document.createElement('div');
+        modal.style.cssText = `
+            position: fixed;
+            inset: 0;
+            z-index: 10001;
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        `;
+        
+        modal.innerHTML = `
+            <div style="
+                background: var(--secondary-bg);
+                border-radius: 24px;
+                width: 100%;
+                max-width: 400px;
+                padding: 24px 20px;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                animation: modalSlideUp 0.3s ease;
+            ">
+                <div style="
+                    font-size: 18px;
+                    font-weight: 600;
+                    color: var(--text-primary);
+                    margin-bottom: 16px;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                ">
+                    <i class="fas fa-link" style="color: var(--accent-color);"></i>
+                    批量导入URL
+                </div>
+                
+                <div style="margin-bottom: 16px;">
+                    <div style="
+                        font-size: 12px;
+                        color: var(--text-secondary);
+                        margin-bottom: 8px;
+                    ">
+                        支持格式：jpg, png, gif, webp<br>
+                        每行一个链接
+                    </div>
+                    
+                    <textarea id="batch-urls-input" 
+                        placeholder="例如：&#10;https://example.com/1.jpg&#10;https://example.com/2.gif"
+                        style="
+                            width: 100%;
+                            height: 150px;
+                            padding: 12px;
+                            border: 1.5px solid var(--border-color);
+                            border-radius: 16px;
+                            background: var(--primary-bg);
+                            color: var(--text-primary);
+                            font-size: 14px;
+                            line-height: 1.5;
+                            resize: none;
+                            outline: none;
+                            font-family: var(--font-family);
+                        "
+                    ></textarea>
+                </div>
+                
+                <div style="
+                    margin-bottom: 16px;
+                    font-size: 12px;
+                    color: var(--text-secondary);
+                    padding: 10px 12px;
+                    background: rgba(var(--accent-color-rgb), 0.08);
+                    border-radius: 12px;
+                ">
+                    <i class="fas fa-info-circle" style="color: var(--accent-color); margin-right: 6px;"></i>
+                    已添加的URL不会重复导入
+                </div>
+                
+                <div style="display: flex; gap: 10px;">
+                    <button id="cancel-url-import" style="
+                        flex: 1;
+                        padding: 14px;
+                        border: 1.5px solid var(--border-color);
+                        border-radius: 14px;
+                        background: transparent;
+                        color: var(--text-secondary);
+                        font-size: 15px;
+                        font-weight: 600;
+                        cursor: pointer;
+                        font-family: var(--font-family);
+                    ">取消</button>
+                    
+                    <button id="confirm-url-import" style="
+                        flex: 2;
+                        padding: 14px;
+                        border: none;
+                        border-radius: 14px;
+                        background: var(--accent-color);
+                        color: white;
+                        font-size: 15px;
+                        font-weight: 600;
+                        cursor: pointer;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        gap: 8px;
+                        font-family: var(--font-family);
+                        box-shadow: 0 4px 12px rgba(var(--accent-color-rgb), 0.3);
+                    ">
+                        <i class="fas fa-download"></i>
+                        开始导入
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        modal.querySelector('#cancel-url-import').addEventListener('click', () => {
+            modal.remove();
+        });
+        
+        modal.querySelector('#confirm-url-import').addEventListener('click', () => {
+            const urlsText = modal.querySelector('#batch-urls-input').value.trim();
+            
+            if (!urlsText) {
+                showNotification('请输入图片链接', 'warning');
+                return;
+            }
+            
+            const urlList = urlsText.split(/[\n\r]+/)
+                .map(url => url.trim())
+                .filter(url => url && url.startsWith('http'));
+            
+            if (urlList.length === 0) {
+                showNotification('未检测到有效的图片链接', 'error');
+                return;
+            }
+            
+            const targetLibrary = window.stickerLibrary || [];
+            const oldLength = targetLibrary.length;
+            const newUrls = [...new Set([...targetLibrary, ...urlList])];
+            
+            if (window.stickerLibrary) {
+                window.stickerLibrary.length = 0;
+                window.stickerLibrary.push(...newUrls);
+            }
+            
+            if (typeof throttledSaveData === 'function') throttledSaveData();
+            modal.remove();
+            if (typeof renderReplyLibrary === 'function') renderReplyLibrary();
+            
+            const addedCount = newUrls.length - oldLength;
+            showNotification(`✨ 成功导入 ${addedCount} 个表情`, 'success');
+        });
+        
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) modal.remove();
+        });
+    };
+
+    // 加载DOCX库
+    window.loadDocxLibrary = window.loadDocxLibrary || function() {
+        return new Promise((resolve, reject) => {
+            if (window.mammoth) {
+                resolve(window.mammoth);
+                return;
+            }
+            
+            const script = document.createElement('script');
+            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js';
+            script.onload = () => resolve(window.mammoth);
+            script.onerror = () => reject(new Error('加载DOCX解析库失败'));
+            document.head.appendChild(script);
+        });
+    };
+
+    // 从文本中提取URL的函数
+    window.extractUrlsFromText = window.extractUrlsFromText || function(text) {
+        const urlRegex = /(https?:\/\/[^\s<>"']+?\.(?:jpg|jpeg|png|gif|webp|bmp|svg)(?:\?[^\s<>"']*)?)/gi;
+        const matches = text.match(urlRegex) || [];
+        return [...new Set(matches)];
+    };
+
+    // 添加Emoji的函数
+    window.addEmoji = window.addEmoji || function() {
+        const input = prompt('请输入要添加的 Emoji（支持组合表情）:');
+        if (input && input.trim() && window.customEmojis) {
+            window.customEmojis.push(input.trim());
+            if (typeof throttledSaveData === 'function') throttledSaveData();
+            if (typeof renderReplyLibrary === 'function') renderReplyLibrary();
+            showNotification('Emoji 已添加', 'success');
+        }
+    };
+
+    // 导出函数
+    window.exportReplies = window.exportReplies || function() {
+        const exportBtn = document.getElementById('export-replies-btn');
+        if (exportBtn) {
+            exportBtn.click();
+            return;
+        }
+        
+        const libraryData = {
+            customReplies: window.customReplies || [],
+            customPokes: window.customPokes || [],
+            customStatuses: window.customStatuses || [],
+            customMottos: window.customMottos || [],
+            customIntros: window.customIntros || [],
+            disabledDefaultReplies: window.disabledDefaultReplies || [],
+            customEmojis: window.customEmojis || [],
+            exportDate: new Date().toISOString()
+        };
+        const fileName = `reply-library-backup-${new Date().toISOString().slice(0, 10)}.json`;
+        const dataStr = JSON.stringify(libraryData, null, 2);
+        
+        if (typeof exportDataToMobileOrPC === 'function') {
+            exportDataToMobileOrPC(dataStr, fileName);
+        } else {
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = fileName;
+            link.click();
+            URL.revokeObjectURL(url);
+        }
+        showNotification('已导出', 'info', 4000);
+    };
+
+    // 去重函数
+    window.deduplicateReplies = window.deduplicateReplies || function() {
+        const dedupBtn = document.getElementById('dedup-replies-btn');
+        if (dedupBtn) {
+            dedupBtn.click();
+        } else if (typeof deduplicateContentArray === 'function' && typeof throttledSaveData === 'function') {
+            let totalRemoved = 0;
+            
+            if (window.customReplies) {
+                const crDedup = deduplicateContentArray(window.customReplies, CONSTANTS?.REPLY_MESSAGES || []);
+                window.customReplies = crDedup.result;
+                totalRemoved += crDedup.removedCount;
+            }
+            
+            if (window.customPokes) {
+                const cpDedup = deduplicateContentArray(window.customPokes);
+                window.customPokes = cpDedup.result;
+                totalRemoved += cpDedup.removedCount;
+            }
+            
+            if (window.customStatuses) {
+                const csDedup = deduplicateContentArray(window.customStatuses);
+                window.customStatuses = csDedup.result;
+                totalRemoved += csDedup.removedCount;
+            }
+            
+            if (window.customMottos) {
+                const cmDedup = deduplicateContentArray(window.customMottos);
+                window.customMottos = cmDedup.result;
+                totalRemoved += cmDedup.removedCount;
+            }
+            
+            if (window.customIntros) {
+                const ciDedup = deduplicateContentArray(window.customIntros);
+                window.customIntros = ciDedup.result;
+                totalRemoved += ciDedup.removedCount;
+            }
+            
+            if (window.customEmojis) {
+                const preEmojiCount = window.customEmojis.length;
+                window.customEmojis = [...new Set(window.customEmojis)];
+                totalRemoved += (preEmojiCount - window.customEmojis.length);
+            }
+            
+            if (totalRemoved > 0) {
+                if (typeof throttledSaveData === 'function') throttledSaveData();
+                if (typeof renderReplyLibrary === 'function') renderReplyLibrary();
+                showNotification(`🧹 清理了 ${totalRemoved} 条重复内容`, 'success');
+            } else {
+                showNotification('✨ 没有重复内容', 'info');
+            }
+        }
+    };
+
+    // 批量删除模式
+    window.toggleBatchDeleteMode = window.toggleBatchDeleteMode || function() {
+        const batchDeleteBtn = document.getElementById('batch-delete-stickers-btn');
+        if (batchDeleteBtn) {
+            batchDeleteBtn.click();
+        } else {
+            showNotification('请在表情库标签页使用批量删除', 'info');
+        }
+    };
+
+    // 监听模态框显示
+    const observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+            if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+                const modal = mutation.target;
+                if (modal.style.display === 'flex') {
+                    forceHideToolbar();
+                    setTimeout(addBottomButtons, 100);
+                    setTimeout(addBottomButtons, 300);
+                }
+            }
+        });
+    });
+
+    const modal = document.getElementById('custom-replies-modal');
+    if (modal) {
+        observer.observe(modal, { attributes: true });
+    }
+
+    // 监听标签页切换
+    document.addEventListener('click', function(e) {
+        const tabBtn = e.target.closest('.reply-tab-btn');
+        if (tabBtn) {
+            setTimeout(() => {
+                const existingBar = document.querySelector('.mobile-bottom-toolbar');
+                if (existingBar) existingBar.remove();
+                addBottomButtons();
+            }, 200);
+        }
+    });
+
+    // 添加额外的CSS
+    const style = document.createElement('style');
+    style.textContent = `
+        #cr-toolbar {
+            display: none !important;
+        }
+        .mobile-bottom-toolbar {
+            animation: slideUp 0.3s ease;
+        }
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        @media (max-width: 768px) {
+            .mobile-bottom-toolbar .btn-text {
+                display: none;
+            }
+            .mobile-bottom-toolbar button {
+                padding: 10px 6px !important;
+            }
+        }
+        @media (max-width: 480px) {
+            .mobile-bottom-toolbar {
+                padding: 6px 8px !important;
+                gap: 4px !important;
+            }
+            .mobile-bottom-toolbar button {
+                padding: 10px 4px !important;
+                font-size: 12px !important;
+                min-width: 44px !important;
+            }
+            .mobile-bottom-toolbar i {
+                font-size: 14px;
+            }
+        }
+    `;
+    document.head.appendChild(style);
+
+    // 强制隐藏工具栏
+    forceHideToolbar();
+    
+    // 定期检查
+    setInterval(forceHideToolbar, 1000);
+})();
 </script>
 </body>
 </html>
