@@ -25698,7 +25698,7 @@ document.addEventListener('DOMContentLoaded', () => {
 })();
 </script>
         <script>
-// ==================== 增强版后台消息通知（修复版） ====================
+// ==================== 移动端优化版后台消息通知 ====================
 (function() {
     // 检查浏览器支持
     if (!('Notification' in window)) {
@@ -25710,34 +25710,28 @@ document.addEventListener('DOMContentLoaded', () => {
     const NOTIF_CONFIG = {
         CHECK_INTERVAL: 2000,         // 检查新消息间隔（2秒）
         DEBOUNCE_TIME: 1000,          // 同一消息防抖时间
-        MAX_TITLE_LENGTH: 30,         // 标题最大长度
-        MAX_BODY_LENGTH: 80,          // 内容最大长度
-        SOUND_ENABLED: true,          // 是否播放提示音
+        MAX_BODY_LENGTH: 50,          // 内容最大长度
         VIBRATION_PATTERN: [200, 100, 200] // 振动模式
     };
 
     let lastMessageCount = 0;
     let notificationCheckInterval = null;
     let lastNotificationTime = 0;
-    let lastNotifiedMessageIds = new Set(); // 记录已通知的消息ID
+    let lastNotifiedMessageIds = new Set();
     let isInitialized = false;
 
-    // ========== 1. 初始化通知系统 ==========
+    // ========== 1. 初始化 ==========
     function initNotificationSystem() {
-        console.log('📱 初始化通知系统...');
+        console.log('📱 初始化移动端通知系统...');
         
-        // 初始化消息计数
         if (window.messages && Array.isArray(window.messages)) {
             lastMessageCount = window.messages.length;
-        } else {
-            lastMessageCount = 0;
         }
         
-        // 清理旧的通知记录（每30分钟清理一次）
+        // 定期清理记录
         setInterval(() => {
             if (lastNotifiedMessageIds.size > 100) {
                 lastNotifiedMessageIds.clear();
-                console.log('🧹 清理通知记录');
             }
         }, 30 * 60 * 1000);
 
@@ -25758,22 +25752,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 根据消息类型处理
         if (message.text && message.text.trim()) {
-            // 文字消息
             body = message.text;
-            
-            // 添加表情符号
-            const emojis = ['💬', '✉️', '📨', '💭', '💌', '💕', '✨'];
-            const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
-            title = `${randomEmoji} ${partnerName}`;
-            
+            // 手机端标题简短些
+            title = partnerName;
         } else if (message.image) {
-            // 图片消息
-            body = '🖼️ 发来了一张图片';
-            title = `📸 ${partnerName}`;
+            body = '📷 发来了一张图片';
         } else if (message.type === 'system') {
-            // 系统消息
             body = message.text || '系统消息';
-            title = `📢 ${partnerName}`;
         } else {
             body = '💬 发来了一条新消息';
         }
@@ -25781,12 +25766,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // 处理长消息
         if (body.length > NOTIF_CONFIG.MAX_BODY_LENGTH) {
             body = body.substring(0, NOTIF_CONFIG.MAX_BODY_LENGTH) + '...';
-        }
-
-        // 如果有回复引用
-        if (message.replyTo) {
-            const repliedText = message.replyTo.text || '一条消息';
-            body = `↩ 回复: ${body}`;
         }
 
         return { title, body, icon };
@@ -25798,68 +25777,49 @@ document.addEventListener('DOMContentLoaded', () => {
         return avatarImg ? avatarImg.src : 'https://file.youtochat.com/images/20260216/1771224856844_qdqdq.jpeg';
     }
 
-    // ========== 4. 显示通知（核心功能） ==========
+    // ========== 4. 显示通知（移动端优化版） ==========
     async function showNotification(message) {
         try {
             // 权限检查
             if (Notification.permission !== 'granted') {
-                console.log('❌ 通知权限未开启');
                 return false;
             }
             
             // 检查是否开启通知
             if (localStorage.getItem('notifEnabled') !== '1') {
-                console.log('❌ 通知开关未开启');
                 return false;
             }
 
-            // 防重复检查（同一消息只通知一次）
+            // 防重复检查
             if (lastNotifiedMessageIds.has(message.id)) {
-                console.log('⏭️ 消息已通知过，跳过');
                 return false;
             }
             
-            // 防抖检查（短时间内不重复）
+            // 防抖检查
             const now = Date.now();
             if (now - lastNotificationTime < NOTIF_CONFIG.DEBOUNCE_TIME) {
-                console.log('⏱️ 短时间内已通知过，跳过');
                 return false;
             }
-
-            console.log('📨 准备发送通知，消息:', message);
 
             const { title, body, icon } = getMessagePreview(message);
             
-            // 通知选项
+            // 移动端简化版通知选项
             const options = {
                 body: body,
                 icon: icon,
                 badge: icon,
                 tag: 'chat-msg-' + message.id,
                 renotify: true,
-                silent: !NOTIF_CONFIG.SOUND_ENABLED,
+                silent: false,
                 vibrate: NOTIF_CONFIG.VIBRATION_PATTERN,
-                requireInteraction: true, // 通知不自动消失
                 timestamp: message.timestamp || Date.now(),
                 data: {
                     messageId: message.id,
-                    text: message.text,
-                    image: message.image,
                     url: window.location.href
                 },
-                actions: [
-                    {
-                        action: 'open',
-                        title: '📱 打开聊天'
-                    },
-                    {
-                        action: 'reply',
-                        title: '💬 快速回复'
-                    }
-                ]
+                // 移动端不需要太多action
+                actions: []
             };
-
-            console.log('📤 发送通知:', title, body);
 
             // 显示通知
             const notification = new Notification(title, options);
@@ -25873,39 +25833,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 event.preventDefault();
                 window.focus();
                 notification.close();
-                
-                // 尝试定位到这条消息
-                setTimeout(() => {
-                    const msgElement = document.querySelector(`.message-wrapper[data-id="${message.id}"]`);
-                    if (msgElement) {
-                        msgElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        msgElement.classList.add('highlight-message');
-                        setTimeout(() => msgElement.classList.remove('highlight-message'), 2000);
-                    }
-                }, 500);
             };
 
-            // 处理通知按钮点击
-            notification.onaction = function(event) {
-                if (event.action === 'open') {
-                    window.focus();
-                } else if (event.action === 'reply') {
-                    window.focus();
-                    setTimeout(() => {
-                        const input = document.getElementById('message-input');
-                        if (input) {
-                            input.focus();
-                            const partnerName = (window.settings && window.settings.partnerName) || '对方';
-                            input.value = `@${partnerName} `;
-                        }
-                    }, 500);
-                }
-                notification.close();
-            };
-
-            // 播放提示音
-            if (window.playSound && typeof window.playSound === 'function') {
-                window.playSound('message');
+            // 尝试振动（如果支持）
+            if (navigator.vibrate) {
+                navigator.vibrate(NOTIF_CONFIG.VIBRATION_PATTERN);
             }
 
             console.log('✅ 通知已发送');
@@ -25917,108 +25849,74 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // ========== 5. 监控消息数组变化 ==========
-    function startMonitoringMessages() {
-        if (!window.messages) {
-            console.log('⏳ 等待 messages 数组初始化...');
-            setTimeout(startMonitoringMessages, 1000);
+    // ========== 5. 增强 addMessage 函数 ==========
+    function enhanceAddMessage() {
+        const originalAddMessage = window.addMessage;
+        if (!originalAddMessage) {
+            console.log('⏳ 等待 addMessage 函数...');
+            setTimeout(enhanceAddMessage, 1000);
             return;
         }
 
-        console.log('📊 开始监控消息变化，当前消息数:', window.messages.length);
-        lastMessageCount = window.messages.length;
-
-        // 使用 Proxy 监控数组变化
-        const originalMessages = window.messages;
-        const messagesProxy = new Proxy(originalMessages, {
-            push: function(target, ...args) {
-                const result = Array.prototype.push.apply(target, args);
+        window.addMessage = function(message) {
+            // 调用原始方法
+            const result = originalAddMessage(message);
+            
+            // 如果开启了通知且是对方的消息
+            if (localStorage.getItem('notifEnabled') === '1' && 
+                message && 
+                message.sender === 'partner') {
                 
-                // 检查新添加的消息
-                args.forEach(newMessage => {
-                    // 只有在后台且是对方发送的消息时才通知
-                    if (document.hidden && 
-                        localStorage.getItem('notifEnabled') === '1' && 
-                        newMessage && 
-                        newMessage.sender === 'partner') {
-                        
-                        console.log('🔔 检测到新消息（后台）:', newMessage);
-                        setTimeout(() => {
-                            showNotification(newMessage);
-                        }, 300);
-                    }
-                });
-                
-                return result;
+                // 无论是否在前台，都显示通知（手机系统会自己决定是否显示）
+                setTimeout(() => {
+                    showNotification(message);
+                }, 300);
             }
-        });
+            
+            return result;
+        };
 
-        // 替换原数组
-        window.messages = messagesProxy;
-        console.log('✅ 消息监控已启动');
+        console.log('✅ addMessage 已增强');
     }
 
-    // ========== 6. 定时检查新消息（兜底方案） ==========
+    // ========== 6. 定时检查（备用方案） ==========
     function startNotificationCheck() {
         if (notificationCheckInterval) {
             clearInterval(notificationCheckInterval);
         }
         
         notificationCheckInterval = setInterval(() => {
-            // 只检查开关是否开启
             if (localStorage.getItem('notifEnabled') !== '1') {
                 return;
             }
 
-            // 获取消息数组
             const messages = window.messages || [];
             const currentCount = messages.length;
             
-            // 如果有新消息，更新计数
             if (currentCount > lastMessageCount) {
+                // 有新消息，检查最后一条
+                const lastMsg = messages[messages.length - 1];
+                if (lastMsg && lastMsg.sender === 'partner') {
+                    // 检查是否已经通知过
+                    if (!lastNotifiedMessageIds.has(lastMsg.id)) {
+                        showNotification(lastMsg);
+                    }
+                }
                 lastMessageCount = currentCount;
             }
             
         }, NOTIF_CONFIG.CHECK_INTERVAL);
 
-        console.log('✅ 通知检查已启动，间隔:', NOTIF_CONFIG.CHECK_INTERVAL + 'ms');
+        console.log('✅ 通知检查已启动');
     }
 
-    // ========== 7. 增强原有的 sendMessage 和 simulateReply ==========
-    function enhanceMessageFunctions() {
-        // 增强 simulateReply 函数（对方自动回复）
-        const originalSimulateReply = window.simulateReply;
-        if (originalSimulateReply) {
-            window.simulateReply = function() {
-                const result = originalSimulateReply.apply(this, arguments);
-                
-                // 如果页面在后台，显示通知
-                if (document.hidden && localStorage.getItem('notifEnabled') === '1') {
-                    // 获取最新的一条对方消息
-                    setTimeout(() => {
-                        const messages = window.messages || [];
-                        const lastPartnerMsg = [...messages].reverse().find(m => m.sender === 'partner');
-                        if (lastPartnerMsg) {
-                            console.log('🔔 检测到对方自动回复（后台）');
-                            showNotification(lastPartnerMsg);
-                        }
-                    }, 1000);
-                }
-                
-                return result;
-            };
-            console.log('✅ simulateReply 已增强');
-        }
-    }
-
-    // ========== 8. 增强原有的 handleNotifToggle ==========
-    const originalHandleNotifToggle = window.handleNotifToggle;
+    // ========== 7. 增强原有的 handleNotifToggle ==========
     window.handleNotifToggle = async function(checkbox) {
         const statusEl = document.getElementById('notif-status-text');
         
         if (!('Notification' in window)) {
             checkbox.checked = false;
-            if (statusEl) statusEl.textContent = '⚠️ 您的浏览器不支持通知功能';
+            if (statusEl) statusEl.textContent = '⚠️ 浏览器不支持通知';
             return;
         }
 
@@ -26028,40 +25926,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 if (permission === 'granted') {
                     if (statusEl) {
-                        statusEl.innerHTML = '✅ 已开启 — 后台时会弹出通知<br>' +
-                            '<span style="font-size:10px; opacity:0.7;">📱 振动提醒 · 快速回复 · 点击定位消息</span>';
+                        statusEl.innerHTML = '✅ 已开启 — 有新消息时会弹出通知';
                     }
                     localStorage.setItem('notifEnabled', '1');
                     
-                    // 初始化消息计数
                     lastMessageCount = window.messages ? window.messages.length : 0;
-                    
-                    // 启动定时检查
                     startNotificationCheck();
                     
-                    // 发送欢迎通知
-                    setTimeout(async () => {
-                        // 先发送测试通知
-                        if (document.hidden) {
-                            await showNotification({
-                                id: 'welcome-' + Date.now(),
-                                sender: 'partner',
-                                text: '通知已开启，有新消息时会在这里显示 ✨',
-                                timestamp: new Date()
-                            });
-                        } else {
-                            // 如果页面可见，提示用户切换到后台
-                            const tip = document.createElement('div');
-                            tip.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--accent-color);color:white;padding:12px 24px;border-radius:30px;z-index:100000;font-size:14px;box-shadow:0 4px 15px rgba(0,0,0,0.2);animation:fadeInOut 3s ease;';
-                            tip.innerHTML = '📱 通知已开启，请切换到后台测试';
-                            document.body.appendChild(tip);
-                            setTimeout(() => tip.remove(), 3000);
-                        }
+                    // 发送测试通知
+                    setTimeout(() => {
+                        showNotification({
+                            id: 'welcome-' + Date.now(),
+                            sender: 'partner',
+                            text: '通知已开启 ✨',
+                            timestamp: new Date()
+                        });
                     }, 1500);
                     
                 } else if (permission === 'denied') {
                     checkbox.checked = false;
-                    if (statusEl) statusEl.textContent = '❌ 通知被拒绝，请在浏览器设置中允许';
+                    if (statusEl) {
+                        statusEl.innerHTML = '❌ 通知被拒绝<br>' +
+                            '<span style="font-size:10px;">请在手机设置 → 通知 → 浏览器中开启</span>';
+                    }
                     localStorage.setItem('notifEnabled', '0');
                 } else {
                     checkbox.checked = false;
@@ -26071,14 +25958,13 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (e) {
                 console.error('请求权限失败:', e);
                 checkbox.checked = false;
-                if (statusEl) statusEl.textContent = '❌ 开启失败：' + e.message;
+                if (statusEl) statusEl.textContent = '❌ 开启失败';
                 localStorage.setItem('notifEnabled', '0');
             }
         } else {
             if (statusEl) statusEl.textContent = '已关闭 — 将不再接收通知';
             localStorage.setItem('notifEnabled', '0');
             
-            // 停止定时检查
             if (notificationCheckInterval) {
                 clearInterval(notificationCheckInterval);
                 notificationCheckInterval = null;
@@ -26086,7 +25972,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // ========== 9. 添加测试按钮 ==========
+    // ========== 8. 添加移动端测试按钮 ==========
     function addTestNotificationButton() {
         const notifSection = document.querySelector('#data-modal .settings-section:first-child');
         if (!notifSection) {
@@ -26099,8 +25985,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const testBtn = document.createElement('button');
         testBtn.id = 'test-notification-btn';
         testBtn.className = 'modal-btn modal-btn-secondary';
-        testBtn.style.cssText = 'margin-top:10px; width:100%; padding:12px; font-size:13px; background: linear-gradient(135deg, var(--accent-color), var(--accent-color-dark)); color: white; border: none;';
-        testBtn.innerHTML = '<i class="fas fa-bell"></i> 发送测试通知（请切换到后台）';
+        testBtn.style.cssText = 'margin-top:10px; width:100%; padding:12px; font-size:13px; background: linear-gradient(135deg, var(--accent-color), var(--accent-color-dark)); color: white; border: none; border-radius: 10px;';
+        testBtn.innerHTML = '<i class="fas fa-bell"></i> 发送测试通知';
         
         testBtn.onclick = async () => {
             if (Notification.permission !== 'granted') {
@@ -26113,89 +25999,60 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             
-            // 创建一条模拟消息
+            // 创建测试消息
             const testMessage = {
                 id: 'test-' + Date.now(),
                 sender: 'partner',
-                text: '这是一条测试消息，看看能不能正常显示 🎉',
+                text: '测试通知 - ' + new Date().toLocaleTimeString(),
                 timestamp: new Date()
             };
             
-            // 显示测试通知
             await showNotification(testMessage);
             
-            // 提示用户切换到后台
-            const overlay = document.createElement('div');
-            overlay.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--accent-color);color:white;padding:12px 24px;border-radius:30px;z-index:100000;font-size:14px;box-shadow:0 4px 15px rgba(0,0,0,0.2);animation:fadeInOut 3s ease;';
-            overlay.innerHTML = '📱 测试通知已发送，请切换到后台查看';
-            document.body.appendChild(overlay);
-            setTimeout(() => overlay.remove(), 3000);
+            // 显示提示
+            const tip = document.createElement('div');
+            tip.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:white;padding:10px 20px;border-radius:20px;z-index:100000;font-size:13px;animation:fadeInOut 2s ease;';
+            tip.innerHTML = '✅ 测试通知已发送';
+            document.body.appendChild(tip);
+            setTimeout(() => tip.remove(), 2000);
         };
         
         notifSection.appendChild(testBtn);
         console.log('✅ 测试按钮已添加');
     }
 
+    // ========== 9. 添加CSS ==========
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes fadeInOut {
+            0% { opacity:0; transform:translateX(-50%) translateY(20px); }
+            15% { opacity:1; transform:translateX(-50%) translateY(0); }
+            85% { opacity:1; transform:translateX(-50%) translateY(0); }
+            100% { opacity:0; transform:translateX(-50%) translateY(20px); }
+        }
+    `;
+    document.head.appendChild(style);
+
     // ========== 10. 初始化 ==========
     function init() {
         if (isInitialized) return;
         
-        console.log('🚀 初始化增强版通知系统...');
+        console.log('🚀 初始化移动端通知系统...');
         
-        // 初始化系统
         initNotificationSystem();
+        enhanceAddMessage();
         
-        // 监控消息变化
-        startMonitoringMessages();
-        
-        // 增强消息函数
-        setTimeout(enhanceMessageFunctions, 1000);
-        
-        // 如果已开启通知，启动检查
         if (localStorage.getItem('notifEnabled') === '1' && 
             Notification.permission === 'granted') {
             startNotificationCheck();
         }
         
-        // 添加测试按钮
         setTimeout(addTestNotificationButton, 3000);
         
-        console.log('✅ 增强版通知系统初始化完成');
+        console.log('✅ 移动端通知系统初始化完成');
     }
 
-    // ========== 11. 监听页面可见性变化 ==========
-    document.addEventListener('visibilitychange', () => {
-        if (document.hidden) {
-            // 页面隐藏时，更新消息计数
-            if (window.messages) {
-                lastMessageCount = window.messages.length;
-            }
-            console.log('📱 页面进入后台，准备接收通知');
-        } else {
-            console.log('💻 页面回到前台');
-        }
-    });
-
-    // ========== 12. 添加CSS动画 ==========
-    const style = document.createElement('style');
-    style.textContent = `
-        .highlight-message {
-            animation: messageFlash 2s ease;
-        }
-        @keyframes messageFlash {
-            0%, 100% { box-shadow: 0 0 0 0 var(--accent-color); }
-            20%, 80% { box-shadow: 0 0 0 4px var(--accent-color); }
-        }
-        @keyframes fadeInOut {
-            0% { opacity:0; transform:translateX(-50%) translateY(-20px); }
-            15% { opacity:1; transform:translateX(-50%) translateY(0); }
-            85% { opacity:1; transform:translateX(-50%) translateY(0); }
-            100% { opacity:0; transform:translateX(-50%) translateY(-20px); }
-        }
-    `;
-    document.head.appendChild(style);
-
-    // ========== 13. 启动 ==========
+    // ========== 11. 启动 ==========
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
     } else {
