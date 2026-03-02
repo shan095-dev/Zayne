@@ -1,6 +1,11 @@
 <!DOCTYPE html>
 <html lang="zh-CN" data-theme="light" data-color-theme="black-white">
 <head>
+    <link rel="manifest" href="/manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="传讯">
+<link rel="apple-touch-icon" href="https://file.youtochat.com/images/20260216/1771224856844_qdqqd.jpeg">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="mobile-web-app-capable" content="yes">
@@ -26060,6 +26065,39 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
 })();
+     // 注册Service Worker
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(registration => {
+        console.log('ServiceWorker注册成功:', registration.scope);
+        
+        // 请求通知权限
+        if ('Notification' in window && Notification.permission === 'default') {
+          Notification.requestPermission();
+        }
+      })
+      .catch(err => {
+        console.log('ServiceWorker注册失败:', err);
+      });
+  });
+}
+
+// 发送推送通知的函数
+function sendPushNotification(title, body, url) {
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.ready.then(registration => {
+      registration.showNotification(title, {
+        body: body,
+        icon: 'https://file.youtochat.com/images/20260216/1771224856844_qdqdq.jpeg',
+        badge: 'https://file.youtochat.com/images/20260216/1771224856844_qdqdq.jpeg',
+        vibrate: [200, 100, 200],
+        data: { url: url },
+        actions: [{ action: 'open', title: '打开' }]
+      });
+    });
+  }
+}
 </script>
 </body>
 </html>
