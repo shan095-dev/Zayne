@@ -15204,7 +15204,76 @@ function showEnvelopeReplyPopup(letter) {
     border-color: #ffc107 !important;
     box-shadow: 0 0 0 2px #ffc107 !important;
 }
-@keyframes slideUpNotif{from{opacity:0;transform:translateX(-50%) translateY(24px) scale(0.9)}60%{transform:translateX(-50%) translateY(-4px) scale(1.02)}to{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}}</style>
+@keyframes slideUpNotif{from{opacity:0;transform:translateX(-50%) translateY(24px) scale(0.9)}60%{transform:translateX(-50%) translateY(-4px) scale(1.02)}to{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}}
+/* ========== 移动端优化 - 底部工具栏 ========== */
+.modal-bottom-toolbar {
+    position: sticky;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: rgba(var(--secondary-bg-rgb), 0.98);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-top: 1px solid var(--border-color);
+    padding: 12px 16px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    z-index: 50;
+    margin-top: 10px;
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.08);
+}
+
+@media (max-width: 768px) {
+    #custom-replies-modal .modal-content {
+        padding-bottom: 0 !important;
+    }
+    
+    .content-list-area {
+        padding-bottom: 80px !important;
+    }
+    
+    .modal-bottom-toolbar .btn-text {
+        display: none;
+    }
+    
+    .modal-bottom-toolbar button {
+        padding: 10px !important;
+        font-size: 14px !important;
+    }
+    
+    .modal-bottom-toolbar i {
+        margin-right: 0 !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .modal-bottom-toolbar {
+        padding: 8px 10px !important;
+        gap: 6px !important;
+    }
+    
+    .modal-bottom-toolbar button {
+        padding: 10px 8px !important;
+        font-size: 13px !important;
+        min-width: 44px !important;
+        height: 44px !important;
+    }
+    
+    .modal-bottom-toolbar .modal-btn {
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+}
+
+/* 隐藏原有的顶部工具栏 */
+#cr-toolbar {
+    display: none !important;
+}
+</style>
         <div style="display:flex;align-items:center;gap:10px;">
             <span style="font-size:26px;">💌</span>
             <div>
@@ -19261,7 +19330,462 @@ function initReplyLibraryListeners() {
             if (currentMajorTab === 'announcement') {
                 return;
             }
+function initReplyLibraryListeners() {
+    const entryBtn = document.getElementById('custom-replies-function');
+    if (entryBtn) {
+        entryBtn.addEventListener('click', () => {
+            hideModal(DOMElements.advancedModal.modal);
+            currentMajorTab = 'reply';
+            currentSubTab = 'custom';
+            document.querySelectorAll('.sidebar-btn').forEach(b => {
+                b.classList.toggle('active', b.dataset.major === 'reply');
+            });
+            renderReplyLibrary();
+            showModal(DOMElements.customRepliesModal.modal);
+        });
+    }
 
+    // ... 原有的其他代码 ...
+
+    // ========== 在这里添加新的移动端优化函数 ==========
+    function optimizeReplyLibraryForMobile() {
+        // 保存原始渲染函数
+        const originalRenderReplyLibrary = window.renderReplyLibrary;
+        
+        window.renderReplyLibrary = function() {
+            const list = document.getElementById('custom-replies-list');
+            const searchInput = document.getElementById('reply-search-input');
+            const addButton = document.getElementById('add-custom-reply');
+            const subTabsContainer = document.getElementById('cr-sub-tabs');
+            const titleEl = document.getElementById('cr-modal-title');
+            const toolbar = document.getElementById('cr-toolbar');
+
+            const currentConfig = LIBRARY_CONFIG[currentMajorTab];
+            titleEl.textContent = currentConfig.title;
+
+            // 渲染子标签页
+            subTabsContainer.innerHTML = currentConfig.tabs.map(tab => `
+                <button class="reply-tab-btn ${currentSubTab === tab.id ? 'active' : ''}" 
+                        data-id="${tab.id}" data-mode="${tab.mode}">
+                    ${tab.name}
+                </button>
+            `).join('');
+
+            subTabsContainer.querySelectorAll('.reply-tab-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    currentSubTab = btn.dataset.id;
+                    renderReplyLibrary();
+                });
+            });
+
+            // 清空列表区域
+            list.innerHTML = '';
+            list.className = 'content-list-area';
+            
+            const activeTabConfig = currentConfig.tabs.find(t => t.id === currentSubTab);
+            list.classList.add(activeTabConfig.mode + '-mode');
+
+            const filterText = searchInput ? searchInput.value.toLowerCase().trim() : '';
+            let itemsToRender = [];
+            let renderType = 'text';
+
+            if (currentMajorTab === 'reply') {
+                if (currentSubTab === 'custom') {
+                    itemsToRender = customReplies;
+                    addButton.innerHTML = '<i class="fas fa-plus"></i> 新增回复';
+                    addButton.style.display = 'flex';
+                } else if (currentSubTab === 'default') {
+                    itemsToRender = CONSTANTS.REPLY_MESSAGES;
+                    addButton.style.display = 'none';
+                } else if (currentSubTab === 'emojis') {
+                    itemsToRender = CONSTANTS.REPLY_EMOJIS;
+                    renderType = 'emoji';
+                    addButton.innerHTML = '<i class="fas fa-plus"></i> 添加Emoji';
+                    addButton.style.display = 'flex';
+                } else if (currentSubTab === 'stickers') {
+                    itemsToRender = stickerLibrary;
+                    renderType = 'image';
+                    addButton.innerHTML = '<i class="fas fa-plus"></i> 添加表情';
+                    addButton.style.display = 'flex';
+                }
+            } else if (currentMajorTab === 'atmosphere') {
+                addButton.style.display = 'flex';
+                if (currentSubTab === 'pokes') {
+                    itemsToRender = customPokes;
+                    addButton.innerHTML = '<i class="fas fa-plus"></i> 新增拍一拍';
+                } else if (currentSubTab === 'statuses') {
+                    itemsToRender = customStatuses;
+                    addButton.innerHTML = '<i class="fas fa-plus"></i> 新增状态';
+                } else if (currentSubTab === 'mottos') {
+                    itemsToRender = customMottos;
+                    addButton.innerHTML = '<i class="fas fa-plus"></i> 新增格言';
+                } else if (currentSubTab === 'intros') {
+                    itemsToRender = customIntros;
+                    addButton.innerHTML = '<i class="fas fa-plus"></i> 新增开场语';
+                }
+            } else if (currentMajorTab === 'announcement') {
+                return;
+            }
+
+            // 渲染内容
+            if (renderType === 'emoji') {
+                renderEmojiGrid(list, itemsToRender, filterText);
+            } else if (renderType === 'image') {
+                renderStickerGrid(list, itemsToRender);
+            } else {
+                renderTextList(list, itemsToRender, filterText, activeTabConfig);
+            }
+
+            // 隐藏原有的工具栏
+            if (toolbar) {
+                toolbar.style.display = 'none';
+            }
+            
+            // 添加底部工具栏
+            addBottomToolbar(list, addButton);
+        };
+
+        // 渲染Emoji网格
+        function renderEmojiGrid(container, items, filterText) {
+            if (items.length === 0 && customEmojis.length === 0) {
+                container.innerHTML = renderEmptyState("列表空空如也");
+                return;
+            }
+            
+            items.forEach(item => {
+                const isDisabled = disabledDefaultReplies.includes(item);
+                const div = document.createElement('div');
+                div.className = `emoji-item ${isDisabled ? 'disabled' : ''}`;
+                div.textContent = item;
+                div.onclick = () => { toggleEmoji(item); };
+                container.appendChild(div);
+            });
+            
+            if (customEmojis.length > 0) {
+                const sep = document.createElement('div');
+                sep.style.cssText = 'grid-column:1/-1;font-size:11px;color:var(--text-secondary);padding:4px 2px 2px;border-top:1px dashed var(--border-color);margin-top:4px;';
+                sep.textContent = '— 自定义 —';
+                container.appendChild(sep);
+                
+                customEmojis.forEach((item, idx) => {
+                    const div = document.createElement('div');
+                    div.className = 'emoji-item';
+                    div.style.position = 'relative';
+                    div.innerHTML = `<span style="pointer-events:none;">${item}</span><span class="emoji-custom-del" style="position:absolute;top:-4px;right:-4px;font-size:10px;background:var(--text-secondary);color:#fff;border-radius:50%;width:14px;height:14px;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;transition:opacity 0.2s;">×</span>`;
+                    div.addEventListener('mouseenter', () => div.querySelector('.emoji-custom-del').style.opacity = '1');
+                    div.addEventListener('mouseleave', () => div.querySelector('.emoji-custom-del').style.opacity = '0');
+                    div.querySelector('.emoji-custom-del').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        customEmojis.splice(idx, 1);
+                        throttledSaveData();
+                        renderReplyLibrary();
+                    });
+                    container.appendChild(div);
+                });
+            }
+        }
+
+        // 渲染表情网格
+        function renderStickerGrid(container, items) {
+            if (items.length === 0) {
+                container.innerHTML = renderEmptyState("表情库空空如也");
+                return;
+            }
+            
+            items.forEach((item, index) => {
+                const div = document.createElement('div');
+                div.className = 'sticker-item';
+                div.dataset.stickerIndex = index;
+                div.innerHTML = `
+                    <img src="${item}" loading="lazy">
+                    <div class="sticker-delete-btn"><i class="fas fa-times"></i></div>
+                `;
+                div.querySelector('.sticker-delete-btn').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if(confirm("删除此表情？")) {
+                        items.splice(index, 1);
+                        throttledSaveData();
+                        renderReplyLibrary();
+                    }
+                });
+                container.appendChild(div);
+            });
+        }
+
+        // 渲染文本列表
+        function renderTextList(container, items, filterText, config) {
+            if (items.length === 0) {
+                container.innerHTML = renderEmptyState("列表空空如也");
+                return;
+            }
+            
+            items.forEach((item, index) => {
+                if (filterText && !item.toLowerCase().includes(filterText)) return;
+                
+                const isDefaultReply = (currentMajorTab === 'reply' && currentSubTab === 'default');
+                const isDisabled = isDefaultReply && disabledDefaultReplies.includes(item);
+                
+                const div = document.createElement('div');
+                div.className = `custom-reply-item ${isDisabled ? 'disabled' : ''}`;
+                
+                let displayHTML = `<span class="custom-reply-text">${item.replace('|', '<br><small style="opacity:0.7">')}</span>`;
+
+                let buttonsHTML = '';
+                if (isDefaultReply) {
+                    const icon = isDisabled ? 'fa-eye' : 'fa-eye-slash';
+                    buttonsHTML = `
+                        <button class="reply-action-mini copy-btn" title="复制为自定义"><i class="fas fa-copy"></i></button>
+                        <button class="reply-action-mini toggle-btn"><i class="fas ${icon}"></i></button>
+                    `;
+                } else {
+                    buttonsHTML = `
+                        <button class="reply-action-mini edit-btn"><i class="fas fa-pen"></i></button>
+                        <button class="reply-action-mini delete-btn"><i class="fas fa-trash-alt"></i></button>
+                    `;
+                }
+
+                div.innerHTML = `${displayHTML}<div class="custom-reply-actions">${buttonsHTML}</div>`;
+
+                if (isDefaultReply) {
+                    div.querySelector('.toggle-btn').onclick = () => toggleDefaultReply(item);
+                    div.querySelector('.copy-btn').onclick = () => copyToCustom(item);
+                } else {
+                    div.querySelector('.delete-btn').onclick = () => deleteItem(index);
+                    div.querySelector('.edit-btn').onclick = () => editItem(index, item);
+                }
+
+                container.appendChild(div);
+            });
+        }
+
+        // 添加底部工具栏
+        function addBottomToolbar(container, addButton) {
+            // 移除可能已存在的底部工具栏
+            const existingBottomBar = document.querySelector('.modal-bottom-toolbar');
+            if (existingBottomBar) {
+                existingBottomBar.remove();
+            }
+            
+            // 创建底部工具栏
+            const bottomBar = document.createElement('div');
+            bottomBar.className = 'modal-bottom-toolbar';
+            
+            // 根据当前标签页决定显示哪些按钮
+            let buttons = '';
+            
+            if (currentSubTab === 'stickers') {
+                buttons = `
+                    <button class="modal-btn modal-btn-primary" id="bottom-add-sticker" style="flex: 1; min-width: 80px; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 12px 10px;">
+                        <i class="fas fa-plus"></i> <span class="btn-text">添加</span>
+                    </button>
+                    <button class="modal-btn modal-btn-secondary" id="bottom-import-stickers" style="flex: 1; min-width: 80px; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 12px 10px;">
+                        <i class="fas fa-file-import"></i> <span class="btn-text">导入</span>
+                    </button>
+                    <button class="modal-btn modal-btn-secondary" id="bottom-export-stickers" style="flex: 1; min-width: 80px; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 12px 10px;">
+                        <i class="fas fa-file-export"></i> <span class="btn-text">导出</span>
+                    </button>
+                    <button class="modal-btn modal-btn-secondary" id="bottom-dedup-stickers" style="flex: 1; min-width: 80px; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 12px 10px;">
+                        <i class="fas fa-broom"></i> <span class="btn-text">去重</span>
+                    </button>
+                    <button class="modal-btn modal-btn-secondary" id="bottom-batch-delete" style="flex: 1; min-width: 80px; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 12px 10px; color: #ff4757; border-color: #ff4757;">
+                        <i class="fas fa-trash-alt"></i> <span class="btn-text">批量删除</span>
+                    </button>
+                `;
+            } else if (currentSubTab === 'custom' || currentSubTab === 'emojis') {
+                buttons = `
+                    <button class="modal-btn modal-btn-primary" id="bottom-add-item" style="flex: 2; min-width: 100px; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 12px 10px;">
+                        <i class="fas fa-plus"></i> 新增
+                    </button>
+                    <button class="modal-btn modal-btn-secondary" id="bottom-import-items" style="flex: 1; min-width: 80px; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 12px 10px;">
+                        <i class="fas fa-file-import"></i>
+                    </button>
+                    <button class="modal-btn modal-btn-secondary" id="bottom-export-items" style="flex: 1; min-width: 80px; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 12px 10px;">
+                        <i class="fas fa-file-export"></i>
+                    </button>
+                    <button class="modal-btn modal-btn-secondary" id="bottom-dedup-items" style="flex: 1; min-width: 80px; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 12px 10px;">
+                        <i class="fas fa-broom"></i>
+                    </button>
+                `;
+            } else {
+                buttons = `
+                    <button class="modal-btn modal-btn-primary" id="bottom-add-item" style="flex: 2; min-width: 100px; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 12px 10px;">
+                        <i class="fas fa-plus"></i> 新增
+                    </button>
+                    <button class="modal-btn modal-btn-secondary" id="bottom-import-items" style="flex: 1; min-width: 80px; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 12px 10px;">
+                        <i class="fas fa-file-import"></i>
+                    </button>
+                    <button class="modal-btn modal-btn-secondary" id="bottom-export-items" style="flex: 1; min-width: 80px; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 12px 10px;">
+                        <i class="fas fa-file-export"></i>
+                    </button>
+                `;
+            }
+            
+            bottomBar.innerHTML = buttons;
+            
+            // 插入到底部
+            container.parentNode.insertBefore(bottomBar, container.nextSibling);
+            
+            // 绑定事件
+            bindBottomBarEvents();
+        }
+
+        // 绑定底部工具栏事件
+        function bindBottomBarEvents() {
+            // 添加按钮
+            const addBtn = document.getElementById('bottom-add-item') || document.getElementById('bottom-add-sticker');
+            if (addBtn) {
+                addBtn.onclick = () => {
+                    if (currentSubTab === 'stickers') {
+                        document.getElementById('sticker-file-input').click();
+                    } else if (currentSubTab === 'emojis') {
+                        const input = prompt('请输入要添加的 Emoji（支持组合表情）:');
+                        if (input && input.trim()) {
+                            customEmojis.push(input.trim());
+                            throttledSaveData();
+                            renderReplyLibrary();
+                            showNotification('Emoji 已添加', 'success');
+                        }
+                    } else {
+                        let input;
+                        if (currentSubTab === 'intros') {
+                            const l1 = prompt("请输入主标题 (如: 𝑳𝒐𝒗𝒆):");
+                            if(!l1) return;
+                            const l2 = prompt("请输入副标题 (如: 若要由我来谈论爱的话):");
+                            input = `${l1}|${l2}`;
+                        } else {
+                            input = prompt(`请输入新的${getCategoryName(currentSubTab)}:`);
+                        }
+                        
+                        if (input && input.trim()) {
+                            const val = input.trim();
+                            let isDuplicate = false;
+                            const valNorm = normalizeStringStrict(val);
+                            
+                            if (currentSubTab === 'custom' && (customReplies.some(r => normalizeStringStrict(r) === valNorm) || CONSTANTS.REPLY_MESSAGES.some(r => normalizeStringStrict(r) === valNorm))) isDuplicate = true;
+                            else if (currentSubTab === 'pokes' && customPokes.some(r => normalizeStringStrict(r) === valNorm)) isDuplicate = true;
+                            else if (currentSubTab === 'statuses' && customStatuses.some(r => normalizeStringStrict(r) === valNorm)) isDuplicate = true;
+                            else if (currentSubTab === 'mottos' && customMottos.some(r => normalizeStringStrict(r) === valNorm)) isDuplicate = true;
+                            else if (currentSubTab === 'intros' && customIntros.some(r => normalizeStringStrict(r) === valNorm)) isDuplicate = true;
+                            
+                            if (isDuplicate) {
+                                showNotification('该内容已存在', 'warning');
+                                return;
+                            }
+                            
+                            if (currentSubTab === 'custom') customReplies.unshift(val);
+                            else if (currentSubTab === 'pokes') customPokes.unshift(val);
+                            else if (currentSubTab === 'statuses') customStatuses.unshift(val);
+                            else if (currentSubTab === 'mottos') customMottos.unshift(val);
+                            else if (currentSubTab === 'intros') customIntros.unshift(val);
+                            
+                            throttledSaveData();
+                            renderReplyLibrary();
+                            showNotification('添加成功', 'success');
+                        }
+                    }
+                };
+            }
+            
+            // 导入按钮
+            const importBtn = document.getElementById('bottom-import-items') || document.getElementById('bottom-import-stickers');
+            if (importBtn) {
+                importBtn.onclick = () => {
+                    document.getElementById('import-replies-input').click();
+                };
+            }
+            
+            // 导出按钮
+            const exportBtn = document.getElementById('bottom-export-items') || document.getElementById('bottom-export-stickers');
+            if (exportBtn) {
+                exportBtn.onclick = () => {
+                    const libraryData = {
+                        customReplies,
+                        customPokes,
+                        customStatuses,
+                        customMottos,
+                        customIntros,
+                        disabledDefaultReplies,
+                        customEmojis,
+                        exportDate: new Date().toISOString()
+                    };
+                    const fileName = `reply-library-backup-${new Date().toISOString().slice(0, 10)}.json`;
+                    const dataStr = JSON.stringify(libraryData, null, 2);
+                    exportDataToMobileOrPC(dataStr, fileName);
+                    showNotification('已导出', 'info', 4000);
+                };
+            }
+            
+            // 去重按钮
+            const dedupBtn = document.getElementById('bottom-dedup-items') || document.getElementById('bottom-dedup-stickers');
+            if (dedupBtn) {
+                dedupBtn.onclick = () => {
+                    let totalRemoved = 0;
+                    
+                    const crDedup = deduplicateContentArray(customReplies, CONSTANTS.REPLY_MESSAGES);
+                    customReplies = crDedup.result;
+                    totalRemoved += crDedup.removedCount;
+                    
+                    const cpDedup = deduplicateContentArray(customPokes);
+                    customPokes = cpDedup.result;
+                    totalRemoved += cpDedup.removedCount;
+                    
+                    const csDedup = deduplicateContentArray(customStatuses);
+                    customStatuses = csDedup.result;
+                    totalRemoved += csDedup.removedCount;
+                    
+                    const cmDedup = deduplicateContentArray(customMottos);
+                    customMottos = cmDedup.result;
+                    totalRemoved += cmDedup.removedCount;
+                    
+                    const ciDedup = deduplicateContentArray(customIntros);
+                    customIntros = ciDedup.result;
+                    totalRemoved += ciDedup.removedCount;
+                    
+                    const preEmojiCount = customEmojis.length;
+                    customEmojis = [...new Set(customEmojis)];
+                    totalRemoved += (preEmojiCount - customEmojis.length);
+                    
+                    if (totalRemoved > 0) {
+                        throttledSaveData();
+                        renderReplyLibrary();
+                        showNotification(`🧹 清理了 ${totalRemoved} 条重复内容`, 'success');
+                    } else {
+                        showNotification('✨ 没有重复内容', 'info');
+                    }
+                };
+            }
+            
+            // 批量删除按钮
+            const batchDeleteBtn = document.getElementById('bottom-batch-delete');
+            if (batchDeleteBtn) {
+                batchDeleteBtn.onclick = () => {
+                    if (typeof toggleBatchDeleteMode === 'function') {
+                        toggleBatchDeleteMode();
+                    }
+                };
+            }
+        }
+
+        // 渲染空状态
+        function renderEmptyState(text) {
+            return `
+            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 0; color: var(--text-secondary); opacity: 0.6; grid-column: 1 / -1;">
+                <div style="width: 60px; height: 60px; background: var(--secondary-bg); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 15px; box-shadow: var(--shadow);">
+                    <i class="fas fa-search" style="font-size: 24px; color: var(--accent-color);"></i>
+                </div>
+                <p style="font-size:15px; font-weight: 500; text-align:center; line-height:1.5;">${text}</p>
+            </div>`;
+        }
+
+        // 调用原始渲染函数
+        if (typeof originalRenderReplyLibrary === 'function') {
+            originalRenderReplyLibrary();
+        }
+    }
+
+    // 调用移动端优化函数
+    optimizeReplyLibraryForMobile();
+}
             var listArea = document.getElementById('custom-replies-list');
             var annPanel = document.getElementById('announcement-panel');
             var toolbar = document.getElementById('cr-toolbar');
@@ -24375,6 +24899,14 @@ function syncStickers(direction, mode) {
     // 显示结果
     showNotification(resultMessage, 'success', 4000);
 }
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        addMobileOptimizedStyles();
+        optimizeReplyLibraryForMobile();
+    }, 1000);
+});
 </script>
 </body>
 </html>
