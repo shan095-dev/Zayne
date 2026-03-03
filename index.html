@@ -12789,7 +12789,32 @@ actionsHTML += `<button class="meta-action-btn delete-btn" title="删除"><i cla
             renderMessages(false);
             throttledSaveData();
         };
-
+if (message.sender === 'partner' && 
+        localStorage.getItem('notifEnabled') === '1' && 
+        'Notification' in window && 
+        Notification.permission === 'granted') {
+        
+        try {
+            const partnerName = settings?.partnerName || '对方';
+            const body = message.text ? message.text.substring(0, 50) : 
+                        (message.image ? '📷 发来了一张图片' : '💬 发来了新消息');
+            const icon = document.querySelector('#partner-avatar img')?.src || 
+                       'https://file.youtochat.com/images/20260216/1771224856844_qdqdq.jpeg';
+            
+            new Notification(partnerName, {
+                body: body,
+                icon: icon,
+                badge: icon,
+                tag: 'msg-' + message.id,
+                renotify: true,
+                vibrate: [200, 100, 200]
+            });
+        } catch(e) {
+            console.error('通知失败:', e);
+        }
+    }
+    // ========== 结束 ==========
+};
         function optimizeImage(file, maxWidth = 800, quality = 0.7) {
             return new Promise((resolve, reject) => {
                 if (file.size < 300 * 1024) {
@@ -13055,6 +13080,31 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
             timestamp: new Date(),
             type: 'system'
         });
+try {
+    if (localStorage.getItem('notifEnabled') === '1' && 
+        'Notification' in window && 
+        Notification.permission === 'granted') {
+        
+        const partnerName = settings.partnerName || '对方';
+        const body = text ? text.substring(0, 50) : (image ? '📷 发来了一张图片' : '💬 发来了新消息');
+        const icon = document.querySelector('#partner-avatar img')?.src || 
+                   'https://file.youtochat.com/images/20260216/1771224856844_qdqdq.jpeg';
+        
+        new Notification(partnerName, {
+            body: body,
+            icon: icon,
+            badge: icon,
+            tag: 'msg-' + (Date.now() + i),
+            renotify: true,
+            vibrate: [200, 100, 200]
+        });
+    }
+} catch(e) {
+    console.error('通知失败:', e);
+}
+// ========== 结束 ==========
+
+playSound('message');
         (function(){var _tiW=document.getElementById('typing-indicator-wrapper');if(_tiW){var _tiInner=_tiW.querySelector('.typing-indicator');if(_tiInner){_tiInner.classList.add('hiding');setTimeout(function(){_tiW.style.display='none';if(_tiInner)_tiInner.classList.remove('hiding');},240);}else{_tiW.style.display='none';}}})();
         return;
     }
@@ -22551,41 +22601,63 @@ window._sendPartnerNotification = function(title, body) {
     } catch(e) {}
 };
 
-window.handleNotifToggle = function(checkbox) {
-    var statusEl = document.getElementById('notif-status-text');
+window.handleNotifToggle = async function(checkbox) {
+    const statusEl = document.getElementById('notif-status-text');
+    
     if (!('Notification' in window)) {
         checkbox.checked = false;
-        if (statusEl) statusEl.textContent = '⚠️ 您的浏览器不支持通知功能，请更换浏览器';
+        if (statusEl) statusEl.textContent = '⚠️ 您的浏览器不支持通知功能';
         return;
     }
+
     if (checkbox.checked) {
-        Notification.requestPermission().then(function(perm) {
-            if (perm === 'granted') {
-                if (statusEl) statusEl.textContent = '✅ 已开启 — 当页面在后台时，收到消息会弹出系统通知';
+        try {
+            const permission = await Notification.requestPermission();
+            
+            if (permission === 'granted') {
+                if (statusEl) {
+                    statusEl.innerHTML = '✅ 已开启 — 有新消息时会弹出通知';
+                }
                 localStorage.setItem('notifEnabled', '1');
-                try {
-                    new Notification('传讯通知已开启 ✨', {
-                        body: '你现在可以在后台收到消息提醒了',
-                        tag: 'notif-test'
-                    });
-                } catch(e) {}
-            } else if (perm === 'denied') {
+                
+                // 发送测试通知
+                setTimeout(() => {
+                    try {
+                        new Notification('✅ 通知已开启', {
+                            body: '现在可以收到消息提醒了 ✨',
+                            icon: 'https://file.youtochat.com/images/20260216/1771224856844_qdqdq.jpeg'
+                        });
+                    } catch(e) {}
+                }, 1000);
+                
+                if (typeof showNotification === 'function') {
+                    showNotification('通知已开启 ✨', 'success', 2000);
+                }
+                
+            } else if (permission === 'denied') {
                 checkbox.checked = false;
-                if (statusEl) statusEl.textContent = '❌ 权限被拒绝，请自行搜索如何开启';
+                if (statusEl) {
+                    statusEl.innerHTML = '❌ 通知被拒绝<br>' +
+                        '<span style="font-size:10px;">请在手机设置 → 通知 → 浏览器中开启</span>';
+                }
                 localStorage.setItem('notifEnabled', '0');
             } else {
                 checkbox.checked = false;
-                if (statusEl) statusEl.textContent = '⚠️ 未做出选择，请重试';
+                if (statusEl) statusEl.textContent = '⚠️ 未选择权限';
                 localStorage.setItem('notifEnabled', '0');
             }
-        }).catch(function() {
+        } catch (e) {
+            console.error('请求权限失败:', e);
             checkbox.checked = false;
-            if (statusEl) statusEl.textContent = '❌ 请求权限失败，请自行搜索如何打开';
+            if (statusEl) statusEl.textContent = '❌ 开启失败';
             localStorage.setItem('notifEnabled', '0');
-        });
+        }
     } else {
-        if (statusEl) statusEl.textContent = '已关闭 — 后台将不再弹出消息提醒';
+        if (statusEl) statusEl.textContent = '已关闭 — 将不再接收通知';
         localStorage.setItem('notifEnabled', '0');
+        if (typeof showNotification === 'function') {
+            showNotification('通知已关闭', 'info', 1500);
+        }
     }
 };
 
@@ -26937,6 +27009,68 @@ function sendPushNotification(title, body, url) {
     };
 
     console.log('✅ 超级修复版加载完成，可以处理格式错误的文件了！');
+})();
+</script>
+<script>
+// ==================== 增强版通知监听器 ====================
+(function() {
+    console.log('📱 初始化通知系统...');
+    
+    // 检查浏览器支持
+    if (!('Notification' in window)) {
+        console.warn('❌ 浏览器不支持通知');
+        return;
+    }
+    
+    // 定期检查新消息
+    let lastCheckedCount = 0;
+    
+    function checkForNewMessages() {
+        try {
+            if (localStorage.getItem('notifEnabled') !== '1') return;
+            if (!window.messages || !Array.isArray(window.messages)) return;
+            
+            const currentCount = window.messages.length;
+            
+            if (currentCount > lastCheckedCount) {
+                // 有新消息，检查最后一条
+                const lastMsg = window.messages[window.messages.length - 1];
+                if (lastMsg && lastMsg.sender === 'partner') {
+                    const partnerName = (window.settings && settings.partnerName) || '对方';
+                    const body = lastMsg.text ? lastMsg.text.substring(0, 50) : 
+                                (lastMsg.image ? '📷 发来了一张图片' : '💬 发来了新消息');
+                    const icon = document.querySelector('#partner-avatar img')?.src || 
+                               'https://file.youtochat.com/images/20260216/1771224856844_qdqdq.jpeg';
+                    
+                    new Notification(partnerName, {
+                        body: body,
+                        icon: icon,
+                        badge: icon,
+                        tag: 'msg-' + lastMsg.id,
+                        renotify: true,
+                        vibrate: [200, 100, 200]
+                    });
+                    console.log('✅ 定时检查发送通知成功');
+                }
+                lastCheckedCount = currentCount;
+            }
+        } catch(e) {
+            console.error('❌ 定时检查通知失败:', e);
+        }
+    }
+    
+    // 每3秒检查一次
+    setInterval(checkForNewMessages, 3000);
+    
+    // 监听页面隐藏
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            console.log('📱 页面隐藏，通知系统待命');
+            lastCheckedCount = window.messages ? window.messages.length : 0;
+        }
+    });
+    
+    console.log('✅ 通知系统初始化完成');
 })();
 </script>
 </body>
