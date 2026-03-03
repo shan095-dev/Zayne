@@ -26093,6 +26093,570 @@ function sendPushNotification(title, body, url) {
     });
   }
 }
+    // ==================== 我的表情包批量删除功能 ====================
+let isMyStickerBatchDeleteMode = false;
+let selectedMyStickers = new Set();
+
+// 初始化我的表情包批量删除功能
+function initMyStickerBatchDelete() {
+    // 添加批量删除按钮到"我的表情包"标签页的顶部
+    addMyStickerBatchDeleteButton();
+    
+    // 扩展原有的切换函数
+    const originalToggle = window.toggleBatchDeleteMode;
+    window.toggleMyStickerBatchDeleteMode = function() {
+        if (currentSubTab !== 'stickers' || currentMajorTab !== 'reply') {
+            showNotification('请在表情库标签页使用批量删除', 'warning');
+            return;
+        }
+        
+        isMyStickerBatchDeleteMode = !isMyStickerBatchDeleteMode;
+        selectedMyStickers.clear();
+        
+        const listArea = document.getElementById('custom-replies-list');
+        if (!listArea) return;
+        
+        if (isMyStickerBatchDeleteMode) {
+            // 添加复选框到我的表情包
+            addCheckboxesToMyStickers();
+            // 显示操作工具栏
+            showMyStickerBatchToolbar();
+            showNotification('我的表情包批量删除模式已开启\n👉 点击选择单个表情\n👉 滑动可连续选择', 'info', 3000);
+            
+            // 初始化滑动选择
+            setTimeout(() => {
+                initMyStickerSwipeSelection();
+            }, 200);
+        } else {
+            // 移除复选框
+            removeCheckboxesFromMyStickers();
+            // 隐藏工具栏
+            hideMyStickerBatchToolbar();
+            // 移除高亮
+            document.querySelectorAll('.sticker-item').forEach(sticker => {
+                sticker.classList.remove('swipe-highlight', 'selected-for-delete');
+            });
+        }
+    };
+}
+
+// 添加批量删除按钮到我的表情包区域
+function addMyStickerBatchDeleteButton() {
+    const observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+            if (mutation.type === 'childList' || mutation.type === 'attributes') {
+                const stickerArea = document.getElementById('custom-replies-list');
+                if (stickerArea && stickerArea.querySelector('.sticker-item')) {
+                    // 检查是否已存在按钮
+                    if (!document.getElementById('my-sticker-batch-delete-btn')) {
+                        // 在"我"的标签页工具栏添加批量删除按钮
+                        const myTabBar = document.querySelector('.combo-tabs-header');
+                        if (myTabBar && currentSubTab === 'stickers' && currentMajorTab === 'reply') {
+                            // 检查是否已经添加过
+                            if (!myTabBar.querySelector('#my-sticker-batch-delete-btn')) {
+                                const batchBtn = document.createElement('button');
+                                batchBtn.id = 'my-sticker-batch-delete-btn';
+                                batchBtn.style.cssText = `
+                                    margin-left: 4px;
+                                    background: linear-gradient(135deg, #ff4757, #ff6b81);
+                                    border: none;
+                                    cursor: pointer;
+                                    padding: 4px 12px;
+                                    color: white;
+                                    font-size: 12px;
+                                    font-weight: 700;
+                                    display: flex;
+                                    align-items: center;
+                                    gap: 4px;
+                                    border-radius: 8px;
+                                    transition: all 0.2s;
+                                    box-shadow: 0 2px 8px rgba(255, 71, 87, 0.35);
+                                `;
+                                batchBtn.innerHTML = '<i class="fas fa-trash-alt"></i> 批量删除';
+                                batchBtn.onclick = (e) => {
+                                    e.stopPropagation();
+                                    window.toggleMyStickerBatchDeleteMode();
+                                };
+                                batchBtn.onmouseover = function() {
+                                    this.style.opacity = '0.85';
+                                    this.style.transform = 'scale(1.05)';
+                                };
+                                batchBtn.onmouseout = function() {
+                                    this.style.opacity = '1';
+                                    this.style.transform = 'scale(1)';
+                                };
+                                myTabBar.appendChild(batchBtn);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    });
+
+    // 观察回复库列表的变化
+    const listArea = document.getElementById('custom-replies-list');
+    if (listArea) {
+        observer.observe(listArea, { childList: true, subtree: true, attributes: true });
+    }
+    
+    // 观察标签页切换
+    const tabObserver = new MutationObserver(function() {
+        setTimeout(() => {
+            if (currentSubTab === 'stickers' && currentMajorTab === 'reply') {
+                addMyStickerBatchDeleteButton();
+            }
+        }, 200);
+    });
+    
+    const modal = document.getElementById('custom-replies-modal');
+    if (modal) {
+        tabObserver.observe(modal, { childList: true, subtree: true, attributes: true });
+    }
+}
+
+// 为我的表情包添加复选框
+function addCheckboxesToMyStickers() {
+    const listArea = document.getElementById('custom-replies-list');
+    if (!listArea) return;
+    
+    const stickers = listArea.querySelectorAll('.sticker-item');
+    
+    stickers.forEach((sticker, index) => {
+        // 记录原始索引
+        sticker.dataset.stickerIndex = index;
+        
+        // 移除已有的复选框
+        const oldCheckbox = sticker.querySelector('.batch-delete-checkbox');
+        if (oldCheckbox) oldCheckbox.remove();
+        
+        // 创建新复选框
+        const checkbox = document.createElement('div');
+        checkbox.className = 'batch-delete-checkbox';
+        checkbox.dataset.stickerIndex = index;
+        
+        checkbox.onclick = (e) => {
+            e.stopPropagation();
+            toggleMyStickerSelection(index, checkbox, sticker);
+        };
+        
+        // 修改表情点击事件
+        sticker.onclick = (e) => {
+            if (e.target.closest('.batch-delete-checkbox')) return;
+            toggleMyStickerSelection(index, checkbox, sticker);
+        };
+        
+        sticker.style.position = 'relative';
+        sticker.style.cursor = 'pointer';
+        sticker.appendChild(checkbox);
+    });
+}
+
+// 移除我的表情包的复选框
+function removeCheckboxesFromMyStickers() {
+    const listArea = document.getElementById('custom-replies-list');
+    if (!listArea) return;
+    
+    const checkboxes = listArea.querySelectorAll('.batch-delete-checkbox');
+    checkboxes.forEach(cb => cb.remove());
+    
+    const stickers = listArea.querySelectorAll('.sticker-item');
+    stickers.forEach(sticker => {
+        sticker.style.position = '';
+        sticker.style.cursor = '';
+        sticker.classList.remove('selected-for-delete', 'swipe-highlight');
+    });
+}
+
+// 切换我的表情包选择状态
+function toggleMyStickerSelection(index, checkbox, sticker) {
+    if (selectedMyStickers.has(index)) {
+        selectedMyStickers.delete(index);
+        checkbox.style.background = 'rgba(0,0,0,0.5)';
+        checkbox.innerHTML = '';
+        checkbox.style.transform = 'scale(1)';
+        sticker.classList.remove('selected-for-delete');
+    } else {
+        selectedMyStickers.add(index);
+        checkbox.style.background = '#ffc107';
+        checkbox.innerHTML = '✓';
+        checkbox.style.color = 'white';
+        checkbox.style.fontSize = '16px';
+        checkbox.style.fontWeight = 'bold';
+        checkbox.style.transform = 'scale(1.2)';
+        sticker.classList.add('selected-for-delete');
+        setTimeout(() => {
+            checkbox.style.transform = 'scale(1)';
+        }, 150);
+    }
+    
+    updateMyStickerBatchCount();
+}
+
+// 更新我的表情包批量删除计数
+function updateMyStickerBatchCount() {
+    const count = selectedMyStickers.size;
+    const countSpan = document.getElementById('my-sticker-batch-count');
+    const countBtnSpan = document.getElementById('my-sticker-batch-count-btn');
+    
+    if (countSpan) countSpan.textContent = `已选择 ${count} 个`;
+    if (countBtnSpan) countBtnSpan.textContent = count;
+}
+
+// 显示我的表情包批量删除工具栏
+function showMyStickerBatchToolbar() {
+    hideMyStickerBatchToolbar();
+    
+    const modalMainView = document.querySelector('.modal-main-view');
+    if (!modalMainView) return;
+    
+    const toolbar = document.createElement('div');
+    toolbar.id = 'my-sticker-batch-toolbar';
+    toolbar.style.cssText = `
+        position: sticky;
+        top: 0;
+        left: 0;
+        right: 0;
+        background: linear-gradient(135deg, #ff4757, #ff6b81);
+        color: white;
+        padding: 12px 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        z-index: 100;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+        backdrop-filter: blur(10px);
+        margin-bottom: 10px;
+        border-radius: 0 0 16px 16px;
+        flex-wrap: wrap;
+        gap: 10px;
+        animation: slideDown 0.3s ease;
+    `;
+    
+    toolbar.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+            <span id="my-sticker-batch-count" style="font-weight: 600; font-size: 14px; background: rgba(255,255,255,0.15); padding: 4px 12px; border-radius: 20px;">已选择 0 个</span>
+            <div style="display: flex; gap: 8px;">
+                <button onclick="selectAllMyStickers()" style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 4px;">
+                    <i class="fas fa-check-double"></i> 全选
+                </button>
+                <button onclick="deselectAllMyStickers()" style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 4px;">
+                    <i class="fas fa-times"></i> 取消全选
+                </button>
+            </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <button onclick="deleteAllMyStickers()" style="background: #ffa502; border: none; color: white; padding: 8px 20px; border-radius: 12px; cursor: pointer; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                <i class="fas fa-trash-alt"></i> 全部删除
+            </button>
+            <button onclick="confirmMyStickerBatchDelete()" style="background: white; border: none; color: #ff4757; padding: 8px 20px; border-radius: 12px; cursor: pointer; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                <i class="fas fa-check"></i> 删除所选 (<span id="my-sticker-batch-count-btn">0</span>)
+            </button>
+            <button onclick="window.toggleMyStickerBatchDeleteMode()" style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); color: white; padding: 8px 16px; border-radius: 12px; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 4px;">
+                <i class="fas fa-times"></i> 取消
+            </button>
+        </div>
+    `;
+    
+    modalMainView.insertBefore(toolbar, modalMainView.firstChild);
+}
+
+// 隐藏我的表情包批量删除工具栏
+function hideMyStickerBatchToolbar() {
+    const existingToolbar = document.getElementById('my-sticker-batch-toolbar');
+    if (existingToolbar) existingToolbar.remove();
+}
+
+// 全选我的表情包
+function selectAllMyStickers() {
+    const listArea = document.getElementById('custom-replies-list');
+    if (!listArea) return;
+    
+    const stickers = listArea.querySelectorAll('.sticker-item');
+    
+    selectedMyStickers.clear();
+    
+    stickers.forEach((sticker, index) => {
+        selectedMyStickers.add(index);
+        const checkbox = sticker.querySelector('.batch-delete-checkbox');
+        if (checkbox) {
+            checkbox.style.background = '#ffc107';
+            checkbox.innerHTML = '✓';
+            checkbox.style.transform = 'scale(1.2)';
+            setTimeout(() => {
+                checkbox.style.transform = 'scale(1)';
+            }, 150);
+        }
+        sticker.classList.add('selected-for-delete');
+        
+        // 脉冲动画
+        sticker.style.animation = 'pulseOnce 0.3s ease';
+        setTimeout(() => {
+            sticker.style.animation = '';
+        }, 300);
+    });
+    
+    updateMyStickerBatchCount();
+    showNotification(`已选择全部 ${stickers.length} 个表情`, 'success', 1500);
+}
+
+// 取消全选我的表情包
+function deselectAllMyStickers() {
+    selectedMyStickers.clear();
+    
+    const listArea = document.getElementById('custom-replies-list');
+    if (!listArea) return;
+    
+    const checkboxes = listArea.querySelectorAll('.batch-delete-checkbox');
+    checkboxes.forEach(checkbox => {
+        checkbox.style.background = 'rgba(0,0,0,0.5)';
+        checkbox.innerHTML = '';
+        checkbox.style.transform = 'scale(1)';
+    });
+    
+    const stickers = listArea.querySelectorAll('.sticker-item');
+    stickers.forEach(sticker => {
+        sticker.classList.remove('selected-for-delete');
+    });
+    
+    updateMyStickerBatchCount();
+}
+
+// 确认批量删除我的表情包
+function confirmMyStickerBatchDelete() {
+    if (selectedMyStickers.size === 0) {
+        showNotification('请先选择要删除的表情', 'warning');
+        return;
+    }
+    
+    if (!confirm(`确定要删除选中的 ${selectedMyStickers.size} 个表情吗？此操作不可恢复！`)) return;
+    
+    // 收集要删除的表情进行动画
+    const stickersToDelete = [];
+    selectedMyStickers.forEach(index => {
+        const sticker = document.querySelector(`.sticker-item[data-sticker-index="${index}"]`);
+        if (sticker) stickersToDelete.push(sticker);
+    });
+    
+    // 播放动画
+    stickersToDelete.forEach((sticker, i) => {
+        setTimeout(() => {
+            sticker.style.transition = 'all 0.2s ease';
+            sticker.style.opacity = '0';
+            sticker.style.transform = 'scale(0.8) rotate(-2deg)';
+        }, i * 30);
+    });
+    
+    // 延迟删除
+    setTimeout(() => {
+        const indicesToDelete = Array.from(selectedMyStickers).sort((a, b) => b - a);
+        
+        indicesToDelete.forEach(index => {
+            myStickerLibrary.splice(index, 1);
+        });
+        
+        // 保存数据
+        if (typeof throttledSaveData === 'function') throttledSaveData();
+        
+        // 退出批量删除模式
+        window.toggleMyStickerBatchDeleteMode();
+        
+        // 刷新显示
+        if (typeof renderMyStickerLibrary === 'function') {
+            renderMyStickerLibrary();
+        }
+        
+        showNotification(`✨ 成功删除 ${selectedMyStickers.size} 个表情`, 'success');
+    }, 300);
+}
+
+// 删除我的表情包所有表情
+function deleteAllMyStickers() {
+    const listArea = document.getElementById('custom-replies-list');
+    if (!listArea) return;
+    
+    const stickers = listArea.querySelectorAll('.sticker-item');
+    if (stickers.length === 0) {
+        showNotification('没有可删除的表情', 'warning');
+        return;
+    }
+    
+    if (confirm(`确定要删除全部 ${stickers.length} 个表情吗？此操作不可恢复！`)) {
+        // 全选
+        selectAllMyStickers();
+        
+        // 播放动画
+        stickers.forEach((sticker, i) => {
+            setTimeout(() => {
+                sticker.style.transition = 'all 0.2s ease';
+                sticker.style.opacity = '0';
+                sticker.style.transform = 'scale(0.8) rotate(-2deg)';
+            }, i * 20);
+        });
+        
+        // 延迟删除
+        setTimeout(() => {
+            myStickerLibrary.length = 0;
+            
+            // 保存数据
+            if (typeof throttledSaveData === 'function') throttledSaveData();
+            
+            // 退出批量删除模式
+            window.toggleMyStickerBatchDeleteMode();
+            
+            // 刷新显示
+            if (typeof renderMyStickerLibrary === 'function') {
+                renderMyStickerLibrary();
+            }
+            
+            showNotification(`✨ 已删除全部 ${stickers.length} 个表情`, 'success');
+        }, 300);
+    }
+}
+
+// 初始化我的表情包滑动选择
+function initMyStickerSwipeSelection() {
+    const listArea = document.getElementById('custom-replies-list');
+    if (!listArea) return;
+    
+    let touchStartIndex = null;
+    let touchCurrentIndex = null;
+    let isTouchSelecting = false;
+    
+    function handleTouchStart(e) {
+        if (!isMyStickerBatchDeleteMode) return;
+        
+        const sticker = e.target.closest('.sticker-item');
+        if (!sticker) return;
+        
+        e.preventDefault();
+        
+        const index = parseInt(sticker.dataset.stickerIndex);
+        if (isNaN(index)) return;
+        
+        touchStartIndex = index;
+        touchCurrentIndex = index;
+        isTouchSelecting = true;
+        
+        if (navigator.vibrate) navigator.vibrate(10);
+        
+        // 高亮当前
+        highlightMyStickerForSwipe(index);
+    }
+    
+    function handleTouchMove(e) {
+        if (!isTouchSelecting || !isMyStickerBatchDeleteMode) return;
+        e.preventDefault();
+        
+        const touch = e.touches[0];
+        const elementsAtTouch = document.elementsFromPoint(touch.clientX, touch.clientY);
+        
+        for (let el of elementsAtTouch) {
+            if (el.classList && el.classList.contains('sticker-item')) {
+                const index = parseInt(el.dataset.stickerIndex);
+                if (!isNaN(index) && index !== touchCurrentIndex) {
+                    touchCurrentIndex = index;
+                    selectMyStickersInRange(touchStartIndex, touchCurrentIndex);
+                    if (navigator.vibrate) navigator.vibrate(5);
+                }
+                break;
+            }
+        }
+    }
+    
+    function handleTouchEnd() {
+        if (!isTouchSelecting || !isMyStickerBatchDeleteMode) return;
+        
+        isTouchSelecting = false;
+        touchStartIndex = null;
+        touchCurrentIndex = null;
+        
+        document.querySelectorAll('.sticker-item').forEach(sticker => {
+            sticker.classList.remove('swipe-highlight');
+        });
+    }
+    
+    function selectMyStickersInRange(start, end) {
+        if (start === null || end === null) return;
+        
+        const min = Math.min(start, end);
+        const max = Math.max(start, end);
+        
+        const stickers = listArea.querySelectorAll('.sticker-item');
+        
+        for (let i = min; i <= max; i++) {
+            const sticker = stickers[i];
+            if (!sticker) continue;
+            
+            const index = i;
+            const checkbox = sticker.querySelector('.batch-delete-checkbox');
+            
+            if (checkbox && !selectedMyStickers.has(index)) {
+                selectedMyStickers.add(index);
+                checkbox.style.background = '#ffc107';
+                checkbox.innerHTML = '✓';
+                sticker.classList.add('selected-for-delete');
+                sticker.classList.add('swipe-highlight');
+            }
+        }
+        
+        updateMyStickerBatchCount();
+    }
+    
+    function highlightMyStickerForSwipe(index) {
+        const stickers = listArea.querySelectorAll('.sticker-item');
+        stickers.forEach((sticker, i) => {
+            if (i === index) {
+                sticker.classList.add('swipe-highlight');
+            } else {
+                sticker.classList.remove('swipe-highlight');
+            }
+        });
+    }
+    
+    // 移除旧监听器，添加新监听器
+    listArea.removeEventListener('touchstart', handleTouchStart);
+    listArea.removeEventListener('touchmove', handleTouchMove);
+    listArea.removeEventListener('touchend', handleTouchEnd);
+    listArea.removeEventListener('touchcancel', handleTouchEnd);
+    
+    listArea.addEventListener('touchstart', handleTouchStart, { passive: false });
+    listArea.addEventListener('touchmove', handleTouchMove, { passive: false });
+    listArea.addEventListener('touchend', handleTouchEnd);
+    listArea.addEventListener('touchcancel', handleTouchEnd);
+}
+
+// 在切换标签页时检查
+document.addEventListener('click', function(e) {
+    const tabBtn = e.target.closest('.combo-tab-btn');
+    if (tabBtn && tabBtn.dataset.tab === 'my-sticker') {
+        setTimeout(() => {
+            if (isMyStickerBatchDeleteMode) {
+                window.toggleMyStickerBatchDeleteMode();
+            }
+        }, 200);
+    }
+});
+
+// 修改 renderMyStickerLibrary 函数，在渲染后添加按钮
+const originalRenderMyStickerLibrary = window.renderMyStickerLibrary;
+if (originalRenderMyStickerLibrary) {
+    window.renderMyStickerLibrary = function() {
+        originalRenderMyStickerLibrary();
+        setTimeout(() => {
+            addMyStickerBatchDeleteButton();
+            if (isMyStickerBatchDeleteMode) {
+                // 如果处于批量模式，重新添加复选框
+                addCheckboxesToMyStickers();
+            }
+        }, 100);
+    };
+}
+
+// 初始化
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(initMyStickerBatchDelete, 1000);
+});
 </script>
 </body>
 </html>
